@@ -29,7 +29,8 @@ export class CameraRig {
   }
 
   right(out: THREE.Vector3): THREE.Vector3 {
-    return out.set(-Math.cos(this.yaw), 0, Math.sin(this.yaw)).normalize();
+    // Right-handed: camera right = forward × world-up (A = left, D = right).
+    return out.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw)).normalize();
   }
 
   update(target: THREE.Vector3, dt: number): void {

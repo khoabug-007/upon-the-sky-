@@ -76,6 +76,7 @@ export class Menu {
           <div class="panel play-panel">
             <h2>PLAY WITH THE WORLD</h2>
             <div class="conn-status" id="conn-status">connecting...</div>
+            <button class="btn btn-big btn-green" id="btn-solo">CLIMB SOLO</button>
             <button class="btn btn-big btn-green" id="btn-join">JOIN SERVER</button>
             <button class="btn btn-big btn-blue" id="btn-find">FIND SERVER</button>
             <button class="btn btn-big btn-gold" id="btn-create">CREATE SERVER</button>
@@ -103,6 +104,9 @@ export class Menu {
       });
     }
 
+    document.getElementById('btn-solo')!.addEventListener('click', () => {
+      this.onEnterGame?.({ ok: true, code: 'SOLO', name: 'Solo Climb', players: [] }, this.profile);
+    });
     document.getElementById('btn-join')!.addEventListener('click', () => this.showServerBoard());
     document.getElementById('btn-find')!.addEventListener('click', () => this.showFindServer());
     document.getElementById('btn-create')!.addEventListener('click', () => this.showCreateServer());
@@ -120,7 +124,9 @@ export class Menu {
   private setConnStatus(ok: boolean): void {
     const el = document.getElementById('conn-status');
     if (!el) return;
-    el.textContent = ok ? 'ONLINE - servers around the world await' : 'OFFLINE - start the game server (npm start)';
+    el.textContent = ok
+      ? 'ONLINE - servers around the world await'
+      : 'OFFLINE - Climb Solo works. Multiplayer needs a Node host (not Vercel).';
     el.classList.toggle('online', ok);
   }
 

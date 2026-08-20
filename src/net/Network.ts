@@ -3,6 +3,14 @@ import type {
   ActionMsg, JoinResult, Profile, RemotePlayerInfo, ServerInfo, StateMsg
 } from '../types';
 
+/** Local Vite → local Node. Vercel static → optional VITE_SOCKET_URL, else same origin. */
+function socketUrl(): string {
+  const fromEnv = import.meta.env.VITE_SOCKET_URL;
+  if (typeof fromEnv === 'string' && fromEnv.trim()) return fromEnv.trim();
+  if (location.port === '5173') return 'http://localhost:3000';
+  return location.origin;
+}
+
 export class Network {
   socket: Socket;
   connected = false;
@@ -14,8 +22,7 @@ export class Network {
   onConnectionChange: ((connected: boolean) => void) | null = null;
 
   constructor() {
-    const url = location.port === '5173' ? 'http://localhost:3000' : location.origin;
-    this.socket = io(url, { transports: ['websocket', 'polling'] });
+    this.socket = io(socketUrl(), { transports: ['websocket', 'polling'] });
     this.socket.on('connect', () => { this.connected = true; this.onConnectionChange?.(true); });
     this.socket.on('disconnect', () => { this.connected = false; this.onConnectionChange?.(false); });
     this.socket.on('player_joined', (p: RemotePlayerInfo) => this.onPlayerJoined?.(p));

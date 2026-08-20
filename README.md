@@ -25,15 +25,23 @@ npm start
 
 Then open http://localhost:3000.
 
-## Public deploy (Render, Railway, Fly, etc.)
+## Deploy on Vercel (WebGL client)
 
-This game needs a **persistent Node process** with WebSockets — static hosts (GitHub Pages, Netlify static) will not work.
+This GitHub repo is the **browser / WebGL** game only (not Unity).
 
-1. Connect this repo to a Node-capable host (Render Blueprint: use `render.yaml`; Railway/Fly: use the `Dockerfile` or set build to `npm ci && npm run build` and start to `npm start`).
-2. Set `NODE_ENV=production`. The host usually sets `PORT` automatically; the server reads `process.env.PORT` (default 3000).
-3. After deploy, share the public **https** URL. Everyone opens that URL in a browser (not `localhost:5173`). Create a server, share the 6-letter room code; friends use **Join Server**.
+1. Import [khoabug-007/upon-the-sky-](https://github.com/khoabug-007/upon-the-sky-) on [vercel.com](https://vercel.com/new).
+2. Leave the defaults from `vercel.json`: build `npm run build`, output `dist`, framework Vite.
+3. Deploy. Open the `*.vercel.app` URL and click **Climb Solo**.
 
-Local production still works the same way: `npm run build && npm start`, then open http://localhost:3000.
+Vercel is a static host. **Create / Join Server will not work there** unless you also run `server/index.js` on a always-on Node host (Render/Railway/Fly) and set the Vercel env var `VITE_SOCKET_URL` to that host (then Redeploy).
+
+## Public deploy with multiplayer (Render, Railway, Fly)
+
+Needs a **persistent Node process** with WebSockets.
+
+1. Use `render.yaml` or the `Dockerfile`. Build: `npm ci && npm run build`. Start: `npm start`.
+2. Set `NODE_ENV=production`. The host sets `PORT`.
+3. Share that **https** URL. Friends join with the 6-letter room code.
 
 ## Controls
 
