@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: upon-the-sky
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production

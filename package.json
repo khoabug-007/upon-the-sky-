@@ -1,0 +1,30 @@
+{
+  "name": "upon-the-sky",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "Upon the Sky - a funny multiplayer parkour game from the earth ground to outer space",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "node server/index.js",
+    "build": "tsc --noEmit && vite build",
+    "start": "node server/index.js",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/three": "^0.185.4",
+    "puppeteer-core": "^25.7.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  }
+}

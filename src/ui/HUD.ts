@@ -1,0 +1,130 @@
+const FALL_MESSAGES = [
+  'The floor called. It misses you!',
+  'Gravity: 1 - You: 0',
+  'That was a bold strategy!',
+  'The ground says hi. Back to the checkpoint!',
+  'You discovered a shortcut... downward.',
+  'Astronauts fall too. Probably.',
+  'Physics has been notified of your complaint.'
+];
+
+const ALTITUDE_TIERS: Array<[number, string]> = [
+  [0, 'Sea level - smells like grass'],
+  [15, 'Roof height - neighbors are watching'],
+  [40, 'Bird zone - flap harder'],
+  [95, 'Cloud nine (literally)'],
+  [128, 'Planes wave at you'],
+  [160, 'Basically an astronaut'],
+  [225, 'Beyond the sky. LEGEND.']
+];
+
+export class HUD {
+  private root: HTMLElement;
+  private toastEl: HTMLElement;
+  private altEl: HTMLElement;
+  private serverEl: HTMLElement;
+  private endingEl: HTMLElement;
+  private toastTimer: number | null = null;
+
+  onPlayAgain: (() => void) | null = null;
+
+  constructor() {
+    this.root = document.getElementById('hud-root')!;
+    this.root.innerHTML = `
+      <div class="howto-board">
+        <div class="howto-title">HOW TO PLAY</div>
+        <div class="howto-grid">
+          <span>Move</span><b>W A S D</b>
+          <span>Run</span><b>hold SHIFT</b>
+          <span>Crawl</span><b>press R</b>
+          <span>Jump</span><b>SPACE</b>
+          <span>Punch</span><b>E</b>
+          <span>Pick up</span><b>Q</b>
+          <span>Throw</span><b>B</b>
+          <span>Grasp</span><b>hold LEFT MOUSE</b>
+        </div>
+        <div class="howto-goal">Climb from the earth to outer space.<br>Teamwork required. Trolling optional (encouraged).</div>
+      </div>
+      <div class="server-panel">
+        <div class="server-name" id="hud-server-name"></div>
+        <div class="server-code" id="hud-server-code" title="Click to copy the code"></div>
+        <div class="server-players" id="hud-server-players"></div>
+      </div>
+      <div class="altitude-panel" id="hud-altitude"></div>
+      <div class="toast hidden" id="hud-toast"></div>
+      <div class="ending-overlay hidden" id="hud-ending"></div>
+    `;
+    this.toastEl = document.getElementById('hud-toast')!;
+    this.altEl = document.getElementById('hud-altitude')!;
+    this.serverEl = document.getElementById('hud-server-players')!;
+    this.endingEl = document.getElementById('hud-ending')!;
+
+    const codeEl = document.getElementById('hud-server-code')!;
+    codeEl.addEventListener('click', () => {
+      navigator.clipboard?.writeText(codeEl.dataset.code ?? '');
+      this.toast('Server code copied! Send it to your friends.');
+    });
+  }
+
+  show(): void { this.root.classList.remove('hidden'); }
+  hide(): void { this.root.classList.add('hidden'); }
+
+  setServer(name: string, code: string): void {
+    document.getElementById('hud-server-name')!.textContent = name;
+    const codeEl = document.getElementById('hud-server-code')!;
+    codeEl.textContent = `CODE: ${code}`;
+    codeEl.dataset.code = code;
+  }
+
+  setPlayerCount(n: number): void {
+    this.serverEl.textContent = n === 1
+      ? '1 player online (invite your friends!)'
+      : `${n} players online`;
+  }
+
+  setAltitude(y: number): void {
+    let tier = ALTITUDE_TIERS[0][1];
+    for (const [minY, label] of ALTITUDE_TIERS) if (y >= minY) tier = label;
+    this.altEl.innerHTML = `Altitude: <b>${Math.max(0, Math.round(y))} m</b><br><span>${tier}</span>`;
+  }
+
+  toast(msg: string, ms = 3200): void {
+    this.toastEl.textContent = msg;
+    this.toastEl.classList.remove('hidden');
+    this.toastEl.classList.remove('pop');
+    void this.toastEl.offsetWidth; // restart animation
+    this.toastEl.classList.add('pop');
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toastEl.classList.add('hidden'), ms);
+  }
+
+  checkpointToast(label: string, index: number, total: number): void {
+    this.toast(`CHECKPOINT ${index + 1}/${total} - "${label}" - progress saved!`, 4200);
+  }
+
+  fallToast(): void {
+    this.toast(FALL_MESSAGES[Math.floor(Math.random() * FALL_MESSAGES.length)]);
+  }
+
+  showEnding(): void {
+    const lines = [
+      { text: 'UPON THE SKY', cls: 'ending-title' },
+      { text: 'This game was created for one simple reason:', cls: '' },
+      { text: 'to connect players from every country on Earth.', cls: '' },
+      { text: 'To prove that teamwork - and a little friendly trolling -', cls: '' },
+      { text: 'can carry us from the ground, all the way beyond the sky.', cls: '' },
+      { text: 'THANK YOU for playing.', cls: 'ending-thanks' },
+      { text: 'You reached outer space. You ARE the sky now.', cls: 'ending-thanks' }
+    ];
+    this.endingEl.innerHTML = lines.map((l, i) =>
+      `<div class="ending-line ${l.cls}" style="animation-delay:${0.8 + i * 1.15}s">${l.text}</div>`
+    ).join('') + `
+      <button class="btn btn-gold ending-btn" id="hud-play-again"
+        style="animation-delay:${0.8 + lines.length * 1.15}s">PLAY AGAIN FROM EARTH</button>`;
+    this.endingEl.classList.remove('hidden');
+    document.getElementById('hud-play-again')!.addEventListener('click', () => {
+      this.endingEl.classList.add('hidden');
+      this.onPlayAgain?.();
+    });
+  }
+}
