@@ -53,9 +53,9 @@ export class HUD {
         <div class="server-players" id="hud-server-players"></div>
       </div>
       <div class="altitude-panel" id="hud-altitude"></div>
-      <div class="stand-panel hidden" id="hud-stand">
+      <div class="stand-panel" id="hud-stand">
         <div class="stand-kicker">STANDING ON</div>
-        <div class="stand-name" id="hud-stand-name"></div>
+        <div class="stand-name" id="hud-stand-name">—</div>
       </div>
       <div class="toast hidden" id="hud-toast"></div>
       <div class="ending-overlay hidden" id="hud-ending"></div>
@@ -97,12 +97,8 @@ export class HUD {
   }
 
   setStandingOn(name: string | null): void {
-    if (!name) {
-      this.standEl.classList.add('hidden');
-      return;
-    }
-    this.standNameEl.textContent = name;
-    this.standEl.classList.remove('hidden');
+    this.standNameEl.textContent = name ?? 'Airborne';
+    this.standEl.classList.toggle('airborne', !name);
   }
 
   toast(msg: string, ms = 3200): void {

@@ -91,6 +91,7 @@ export class Game {
 
     this.controller.onBounce = () => this.hud.toast('BOING!', 900);
     this.controller.onRotorHit = () => this.hud.toast('BONK! The bar strikes again.', 2000);
+    this.controller.onBallHit = () => this.hud.toast('BONK! A marble!', 1400);
 
     this.hud.setServer(joinInfo.name ?? 'Server', joinInfo.code ?? '------');
     this.hud.onPlayAgain = () => {
@@ -384,6 +385,28 @@ export class Game {
     }
   }
 
+  private checkHazardBalls(): void {
+    const p = this.controller;
+    if (p.stunTimer > 0) return;
+    const py = p.pos.y + p.height * 0.4;
+    for (const b of this.world.hazardBalls) {
+      if (!b.active) continue;
+      const dx = p.pos.x - b.pos.x;
+      const dy = py - b.pos.y;
+      const dz = p.pos.z - b.pos.z;
+      const rad = p.radius + b.radius;
+      if (dx * dx + dy * dy + dz * dz > rad * rad) continue;
+      const dir = new THREE.Vector3(dx, 0, dz);
+      if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+      dir.normalize();
+      p.applyKnockback(dir, 9.5);
+      p.onBallHit?.();
+      b.vel.x += dir.x * 2.4;
+      b.vel.z += dir.z * 2.4;
+      break;
+    }
+  }
+
   private checkFall(): void {
     const cpY = this.currentCheckpoint >= 0 ? this.world.checkpoints[this.currentCheckpoint].pos.y : 0;
     if (this.controller.pos.y < cpY - 45 || this.controller.pos.y < -22) {
@@ -494,6 +517,7 @@ export class Game {
 
     this.controller.capturePrevPos();
     this.controller.update(dt, this.input, this.cam, this.world);
+    this.checkHazardBalls();
 
     // If someone carries us, ride on their head
     if (this.controller.carriedBy) {

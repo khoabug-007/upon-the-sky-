@@ -45,6 +45,30 @@ export interface Prop {
   home: THREE.Vector3;
 }
 
+/** Walkable ramp. y interpolates from y0 at z0 (bottom) to y1 at z1 (top). */
+export interface Slope {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+  y0: number;
+  y1: number;
+  name: string;
+  pad: BoxCollider;
+}
+
+export interface HazardBall {
+  mesh: THREE.Mesh;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  radius: number;
+  active: boolean;
+  slope: Slope;
+}
+
+const BALL_COLORS = [0x3498db, 0xe74c3c, 0x9b59b6, 0xf1c40f];
+const MAX_SLOPE_BALLS = 4;
+
 export const SKY_START_Y = 90;
 // Low-gravity kicks in at the sky-bridge cloud (~y 88); matches retuned course pacing
 export const SPACE_START_Y = 88;
@@ -92,6 +116,8 @@ export class WorldMap {
   checkpoints: Checkpoint[] = [];
   grabPoints: THREE.Vector3[] = [];
   props: Prop[] = [];
+  slopes: Slope[] = [];
+  hazardBalls: HazardBall[] = [];
   stars!: THREE.Points;
   endingPos = new THREE.Vector3();
   spawnPos = new THREE.Vector3(0, 0.1, -4);
@@ -99,6 +125,7 @@ export class WorldMap {
   private clouds: THREE.Group[] = [];
   private endingRing!: THREE.Mesh;
   private time = 0;
+  private ballSpawnWait = 0.4;
 
   constructor(private scene: THREE.Scene) {
     this.build();
@@ -269,6 +296,73 @@ export class WorldMap {
     }
   }
 
+  private addBallSlope(
+    x0: number, x1: number,
+    z0: number, y0: number,
+    z1: number, y1: number,
+    name = 'Marble Slope'
+  ): Slope {
+    const width = x1 - x0;
+    const run = z1 - z0;
+    const rise = y1 - y0;
+    const len = Math.hypot(run, rise);
+    const angle = Math.atan2(rise, run);
+    const midX = (x0 + x1) / 2;
+    const midY = (y0 + y1) / 2;
+    const midZ = (z0 + z1) / 2;
+    const thick = 0.42;
+
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(width, thick, len), mat(0xb08968, 0.9));
+    ramp.rotation.x = -angle;
+    ramp.position.set(midX, midY - Math.cos(angle) * (thick / 2), midZ + Math.sin(angle) * (thick / 2));
+    ramp.castShadow = true;
+    ramp.receiveShadow = true;
+    ramp.name = name;
+    this.scene.add(ramp);
+
+    const hopper = new THREE.Mesh(new THREE.BoxGeometry(width * 0.92, 0.55, 1.1), mat(0x6d4c41, 0.85));
+    hopper.position.set(midX, y1 + 0.55, z1 - 0.15);
+    hopper.castShadow = true;
+    this.scene.add(hopper);
+
+    const curbMat = mat(0x8d6e63, 0.88);
+    for (const side of [x0 + 0.12, x1 - 0.12]) {
+      const curb = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.55, len), curbMat);
+      curb.rotation.x = -angle;
+      curb.position.set(side, midY + 0.12, midZ);
+      curb.castShadow = true;
+      this.scene.add(curb);
+    }
+
+    const pad: BoxCollider = {
+      min: new THREE.Vector3(x0, y0 - 0.2, z0),
+      max: new THREE.Vector3(x1, y1 + 0.2, z1),
+      name
+    };
+    const slope: Slope = { x0, x1, z0, z1, y0, y1, name, pad };
+    this.slopes.push(slope);
+
+    const radius = 0.4;
+    for (let i = 0; i < MAX_SLOPE_BALLS; i++) {
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 16, 12),
+        new THREE.MeshStandardMaterial({ color: BALL_COLORS[i], roughness: 0.35, metalness: 0.08 })
+      );
+      mesh.castShadow = true;
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.hazardBalls.push({
+        mesh, pos: new THREE.Vector3(), vel: new THREE.Vector3(), radius, active: false, slope
+      });
+    }
+    return slope;
+  }
+
+  slopeHeight(s: Slope, z: number): number {
+    const t = (z - s.z0) / Math.max(1e-4, s.z1 - s.z0);
+    return s.y0 + (s.y1 - s.y0) * Math.min(1, Math.max(0, t));
+  }
+
   private addProp(x: number, y: number, z: number, kind: 'ball' | 'crate'): void {
     const id = this.props.length;
     let mesh: THREE.Mesh;
@@ -415,13 +509,13 @@ export class WorldMap {
     this.addCheckpoint(0, cy + 0.58, cz, 'Cloud Nine');
     const restY = cy, restZ = cz;
 
-    // Obstacle 8: mega trampoline into the grab wall (trampoline → grab is intended route)
+    // Obstacle 8: marble slope into the grab wall. Balls roll down; dodge or get bonked.
     this.addTrampoline(0, restY + 0.3, restZ + 3.5, 2, 'Wall Trampoline');
     const wallBottom = restY + 6, wallTop = restY + 16, wallZ = restZ + 10;
-    this.addCloud(0, wallBottom - 1.5, wallZ - 3.5, 7, 5, undefined, 'Magnet Cloud');
+    this.addBallSlope(-3.1, 3.1, restZ + 3.6, restY + 0.62, wallZ - 1.6, wallBottom - 0.08, 'Marble Slope');
     this.addGrabWall(0, wallBottom, wallTop, wallZ);
     this.addBox(9, 1, 7, 0, wallTop + 0.5, wallZ + 3.5, 0xeceff1, { name: 'Magnet Deck' });
-    this.addSign(['Hold LEFT CLICK to cling', 'like a fridge magnet.', 'SPACE to leap!'], -6, wallBottom + 6, wallZ - 4, 0.95);
+    this.addSign(['Marbles roll down.', 'Sidestep or BONK!', 'Then cling the wall.'], -6, wallBottom + 6, wallZ - 4, 0.95);
     this.addCheckpoint(0, wallTop + 1, wallZ + 3.5, 'Wall Magnet');
 
     // Obstacle 9: rotor gauntlet on the long sky bridge
@@ -517,10 +611,78 @@ export class WorldMap {
     this.endingRing.rotation.y = this.time * 0.6;
     this.endingRing.position.y = this.endingPos.y + Math.sin(this.time * 1.2) * 0.4;
 
+    this.updateHazardBalls(dt);
+
     for (const cl of this.clouds) {
       cl.children.forEach((b, i) => {
         b.position.y += Math.sin(this.time * 0.8 + i * 2.4) * 0.0009;
       });
+    }
+  }
+
+  private spawnHazardBall(): void {
+    const ball = this.hazardBalls.find((b) => !b.active);
+    if (!ball) return;
+    const s = ball.slope;
+    const margin = ball.radius + 0.25;
+    ball.pos.set(
+      s.x0 + margin + Math.random() * Math.max(0.2, s.x1 - s.x0 - margin * 2),
+      s.y1 + 0.85 + Math.random() * 0.35,
+      s.z1 - 0.35 - Math.random() * 0.25
+    );
+    ball.vel.set((Math.random() - 0.5) * 1.1, -1.2, -(0.4 + Math.random() * 0.5));
+    const mat = ball.mesh.material as THREE.MeshStandardMaterial;
+    mat.color.setHex(BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)]);
+    ball.mesh.visible = true;
+    ball.mesh.position.copy(ball.pos);
+    ball.active = true;
+  }
+
+  private updateHazardBalls(dt: number): void {
+    this.ballSpawnWait -= dt;
+    if (this.ballSpawnWait <= 0) {
+      const live = this.hazardBalls.reduce((n, b) => n + (b.active ? 1 : 0), 0);
+      // Sometimes skip a beat so the stream never feels metronomic.
+      if (live < MAX_SLOPE_BALLS && Math.random() > 0.22) this.spawnHazardBall();
+      this.ballSpawnWait = 0.28 + Math.random() * 1.55;
+      if (Math.random() < 0.18) this.ballSpawnWait += 0.7 + Math.random() * 1.4;
+    }
+
+    for (const b of this.hazardBalls) {
+      if (!b.active) continue;
+      const s = b.slope;
+      const run = s.z1 - s.z0;
+      const rise = s.y1 - s.y0;
+      const len = Math.hypot(run, rise);
+      const downZ = (s.z0 - s.z1) / len;
+      const downY = (s.y0 - s.y1) / len;
+      const surf = this.slopeHeight(s, b.pos.z) + b.radius;
+
+      if (b.pos.y > surf + 0.08) {
+        b.vel.y -= 18 * dt;
+      } else {
+        b.pos.y = surf;
+        const along = b.vel.y * downY + b.vel.z * downZ;
+        const speed = Math.min(3.15, Math.max(1.45, along + 2.4 * dt));
+        b.vel.y = downY * speed;
+        b.vel.z = downZ * speed;
+        b.vel.x += (Math.random() - 0.5) * 2.2 * dt;
+        b.vel.x *= 0.985;
+      }
+
+      b.pos.addScaledVector(b.vel, dt);
+      const edge = b.radius + 0.16;
+      b.pos.x = Math.min(s.x1 - edge, Math.max(s.x0 + edge, b.pos.x));
+
+      if (b.pos.z < s.z0 - 0.6 || b.pos.y < s.y0 - 1.5) {
+        b.active = false;
+        b.mesh.visible = false;
+        continue;
+      }
+
+      b.mesh.position.copy(b.pos);
+      b.mesh.rotation.x += b.vel.z * dt * 2.4;
+      b.mesh.rotation.z -= b.vel.x * dt * 2.4;
     }
   }
 }

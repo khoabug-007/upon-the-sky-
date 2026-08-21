@@ -55,6 +55,7 @@ export class PlayerController {
 
   onBounce: (() => void) | null = null;
   onRotorHit: (() => void) | null = null;
+  onBallHit: (() => void) | null = null;
 
   get height(): number { return this.crawling ? 0.72 : this.standHeight; }
 
@@ -195,6 +196,7 @@ export class PlayerController {
     this.groundCollider = null;
     this.onGround = false;
     this.moveAxis(world, 'y', this.vel.y * dt, wasFalling);
+    this.stickToSlopes(world);
 
     // ----- rotor bars knock you flying -----
     for (const r of world.rotors) {
@@ -272,6 +274,21 @@ export class PlayerController {
           this.vel.y = 0;
         }
         // else: one-way pad — pass through from below / ignore glancing hits
+      }
+    }
+  }
+
+  private stickToSlopes(world: WorldMap): void {
+    if (this.vel.y > 1.2) return;
+    for (const s of world.slopes) {
+      if (this.pos.x < s.x0 || this.pos.x > s.x1) continue;
+      if (this.pos.z < s.z0 || this.pos.z > s.z1) continue;
+      const ySurf = world.slopeHeight(s, this.pos.z);
+      if (this.pos.y >= ySurf - 0.45 && this.pos.y <= ySurf + 0.7) {
+        this.pos.y = ySurf;
+        this.vel.y = 0;
+        this.onGround = true;
+        this.groundCollider = s.pad;
       }
     }
   }

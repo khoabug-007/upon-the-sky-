@@ -328,33 +328,40 @@ input[type="range"]::-webkit-slider-thumb {
 
 .stand-panel {
   position: absolute;
-  bottom: 18px;
+  top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  min-width: 280px;
-  max-width: min(420px, 86vw);
-  padding: 12px 28px 14px;
+  width: 320px;
+  max-width: calc(100vw - 560px);
+  min-width: 200px;
+  padding: 10px 18px 12px;
   text-align: center;
-  background: rgba(20, 28, 48, 0.82);
+  background: rgba(20, 28, 48, 0.86);
   color: #fff;
-  border: 2px solid rgba(241, 196, 15, 0.55);
-  border-radius: 6px;
+  border: 2px solid rgba(241, 196, 15, 0.7);
+  border-radius: 4px;
   box-shadow: inset 0 0 0 1px rgba(255, 250, 235, 0.12);
   backdrop-filter: blur(4px);
+  pointer-events: none;
 }
+.stand-panel.airborne { border-color: rgba(174, 186, 221, 0.35); }
 .stand-kicker {
   font-size: 11px;
   letter-spacing: 0.18em;
   color: #c5b07a;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .stand-name {
   font-family: 'Baloo 2', sans-serif;
   font-weight: 800;
-  font-size: 22px;
+  font-size: 20px;
   color: #fff8e7;
   line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.stand-panel.airborne .stand-name { color: #aebadd; font-weight: 700; }
 
 .toast {
   position: absolute;
