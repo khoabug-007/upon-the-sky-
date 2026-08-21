@@ -30,6 +30,8 @@ export class HUD {
   private struggleFill: SVGCircleElement;
   private struggleCountEl: HTMLElement;
   private toastTimer: number | null = null;
+  private level = 0;
+  private totalLevels = 100;
 
   onPlayAgain: (() => void) | null = null;
 
@@ -45,11 +47,11 @@ export class HUD {
           <span>Jump</span><b>SPACE</b>
           <span>Punch</span><b>E</b>
           <span>Pick up</span><b>Q</b>
-          <span>Throw</span><b>B</b>
+          <span>Throw</span><b>B (onto pads)</b>
           <span>Struggle</span><b>click x8</b>
           <span>Slopes</span><b>run slows</b>
         </div>
-        <div class="howto-goal">Climb from the earth to outer space.<br>Teamwork required. Trolling optional (encouraged).</div>
+        <div class="howto-goal">Climb 100 checkpoints from earth to outer space.<br>Some gates only open if you throw a crate onto the high pad.</div>
       </div>
       <div class="server-panel">
         <div class="server-name" id="hud-server-name"></div>
@@ -105,10 +107,17 @@ export class HUD {
       : `${n} players online`;
   }
 
+  setProgress(level: number, total: number): void {
+    this.level = Math.max(0, level);
+    this.totalLevels = Math.max(1, total);
+  }
+
   setAltitude(y: number): void {
     let tier = ALTITUDE_TIERS[0][1];
     for (const [minY, label] of ALTITUDE_TIERS) if (y >= minY) tier = label;
-    this.altEl.innerHTML = `Altitude: <b>${Math.max(0, Math.round(y))} m</b><br><span>${tier}</span>`;
+    this.altEl.innerHTML =
+      `Level: <b>${this.level} / ${this.totalLevels}</b><br>` +
+      `Altitude: <b>${Math.max(0, Math.round(y))} m</b><br><span>${tier}</span>`;
   }
 
   setStandingOn(name: string | null): void {

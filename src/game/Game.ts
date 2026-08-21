@@ -33,6 +33,8 @@ export class Game {
   private remotes = new Map<string, RemotePlayer>();
 
   private sun: THREE.DirectionalLight;
+  private spaceSky!: THREE.Mesh;
+  private spaceSkyMat!: THREE.MeshBasicMaterial;
   private currentCheckpoint = -1;
   private carryingId: string | null = null;
   private heldProp: Prop | null = null;
@@ -62,6 +64,7 @@ export class Game {
 
     this.scene.background = GROUND_SKY.clone();
     this.scene.fog = new THREE.Fog(GROUND_SKY.clone(), 60, 320);
+    this.installSpaceSky();
 
     this.sun = new THREE.DirectionalLight(0xfff4e0, 2.6);
     this.sun.castShadow = true;
@@ -92,6 +95,7 @@ export class Game {
     }
     this.controller.teleport(this.respawnPoint());
     this.cam.snap(this.controller.pos);
+    this.hud.setProgress(this.currentCheckpoint + 1, this.world.checkpoints.length);
 
     this.controller.onBounce = () => this.hud.toast('BOING!', 900);
     this.controller.onRotorHit = () => this.hud.toast('BONK! The bar strikes again.', 2000);
@@ -356,6 +360,7 @@ export class Game {
       p.vel.y -= 20 * dt;
       p.mesh.position.addScaledVector(p.vel, dt);
       for (const c of this.world.colliders) {
+        if (c.disabled) continue;
         const pos = p.mesh.position;
         const cxp = Math.max(c.min.x, Math.min(pos.x, c.max.x));
         const cyp = Math.max(c.min.y, Math.min(pos.y, c.max.y));
@@ -410,6 +415,7 @@ export class Game {
         this.markCheckpointsReached(cp.index);
         localStorage.setItem(PROGRESS_KEY, JSON.stringify({ checkpoint: cp.index }));
         this.hud.checkpointToast(cp.label, cp.index, this.world.checkpoints.length);
+        this.hud.setProgress(cp.index + 1, this.world.checkpoints.length);
         this.spawnConfetti(cp.pos.clone().add(new THREE.Vector3(0, 1.5, 0)));
       }
     }
@@ -505,21 +511,46 @@ export class Game {
 
   // ---------------- atmosphere ----------------
 
+  private installSpaceSky(): void {
+    this.spaceSkyMat = new THREE.MeshBasicMaterial({
+      side: THREE.BackSide,
+      fog: false,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false
+    });
+    new THREE.TextureLoader().load('/assets/space-sky.png', (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      this.spaceSkyMat.map = tex;
+      this.spaceSkyMat.needsUpdate = true;
+    });
+    this.spaceSky = new THREE.Mesh(new THREE.SphereGeometry(120, 48, 32), this.spaceSkyMat);
+    this.spaceSky.frustumCulled = false;
+    this.spaceSky.renderOrder = -10;
+    this.scene.add(this.spaceSky);
+  }
+
   private updateAtmosphere(): void {
     const y = this.controller.pos.y;
     const bg = this.scene.background as THREE.Color;
+    const skyT = THREE.MathUtils.smoothstep(y, 52, 95);
+    this.spaceSkyMat.opacity = skyT;
+    this.spaceSky.visible = skyT > 0.02;
     if (y < 110) {
       bg.copy(GROUND_SKY).lerp(HIGH_SKY, THREE.MathUtils.smoothstep(y, 35, 110));
     } else {
       bg.copy(HIGH_SKY).lerp(SPACE_SKY, THREE.MathUtils.smoothstep(y, 115, 190));
     }
+    if (skyT > 0.15) bg.lerp(SPACE_SKY, THREE.MathUtils.smoothstep(skyT, 0.15, 1));
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(bg);
-    fog.far = 320 + THREE.MathUtils.smoothstep(y, 90, 190) * 700;
+    fog.near = 70 + skyT * 50;
+    fog.far = 320 + THREE.MathUtils.smoothstep(y, 70, 220) * 1400;
     (this.world.stars.material as THREE.PointsMaterial).opacity =
-      THREE.MathUtils.smoothstep(y, 120, 185);
-    const spaceness = THREE.MathUtils.smoothstep(y, 115, 190);
-    this.sun.intensity = 2.6 - spaceness * 1.1;
+      THREE.MathUtils.smoothstep(y, 120, 185) * (1 - skyT * 0.55);
+    const spaceness = THREE.MathUtils.smoothstep(y, 90, 190);
+    this.sun.intensity = 2.6 - spaceness * 1.35;
   }
 
   // ---------------- main loop ----------------
@@ -628,6 +659,7 @@ export class Game {
     this.sun.target.position.copy(this.renderPos);
 
     this.cam.update(this.renderPos, rawDt);
+    this.spaceSky.position.copy(this.cam.camera.position);
     this.renderer.render(this.scene, this.cam.camera);
   };
 }

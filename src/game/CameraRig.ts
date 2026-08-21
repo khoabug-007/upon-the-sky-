@@ -9,7 +9,7 @@ export class CameraRig {
   private lookReady = false;
 
   constructor(private canvas: HTMLCanvasElement) {
-    this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 1600);
+    this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2800);
     canvas.addEventListener('click', () => {
       if (document.pointerLockElement !== canvas) canvas.requestPointerLock();
     });

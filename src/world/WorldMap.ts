@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { appendClimbLevels, placeThrowGate, type ClimbApi, type ThrowSwitch } from './climbCourse';
 
 export interface BoxCollider {
   min: THREE.Vector3;
@@ -6,6 +7,7 @@ export interface BoxCollider {
   bouncy?: boolean;
   moverIndex?: number;
   name?: string;
+  disabled?: boolean;
 }
 
 export interface Mover {
@@ -117,6 +119,7 @@ export class WorldMap {
   props: Prop[] = [];
   slopes: Slope[] = [];
   hazardBalls: HazardBall[] = [];
+  throwSwitches: ThrowSwitch[] = [];
   stars!: THREE.Points;
   endingPos = new THREE.Vector3();
   spawnPos = new THREE.Vector3(0, 0.1, -4);
@@ -386,6 +389,49 @@ export class WorldMap {
     this.scene.add(s);
   }
 
+  private climbApi(): ClimbApi {
+    return {
+      addBox: this.addBox.bind(this),
+      addTrampoline: this.addTrampoline.bind(this),
+      addMover: this.addMover.bind(this),
+      addRotor: this.addRotor.bind(this),
+      addCloud: this.addCloud.bind(this),
+      addAsteroid: this.addAsteroid.bind(this),
+      addProp: this.addProp.bind(this),
+      addSign: this.addSign.bind(this),
+      addCheckpoint: this.addCheckpoint.bind(this),
+      lastCollider: () => this.colliders[this.colliders.length - 1]!,
+      addThrowSwitch: (sw) => { this.throwSwitches.push(sw); }
+    };
+  }
+
+  private updateThrowSwitches(): void {
+    for (const sw of this.throwSwitches) {
+      if (sw.open) continue;
+      let hit = false;
+      for (const p of this.props) {
+        if (p.heldBy) continue;
+        const pos = p.mesh.position;
+        if (pos.x + p.radius < sw.padMin.x || pos.x - p.radius > sw.padMax.x) continue;
+        if (pos.z + p.radius < sw.padMin.z || pos.z - p.radius > sw.padMax.z) continue;
+        if (pos.y + p.radius < sw.padMin.y - 0.2 || pos.y - p.radius > sw.padMax.y + 1.4) continue;
+        hit = true;
+        break;
+      }
+      if (!hit) continue;
+      sw.open = true;
+      for (const part of sw.parts) {
+        if (part.hideWhenOpen) {
+          part.mesh.visible = false;
+          part.collider.disabled = true;
+        } else {
+          part.mesh.visible = true;
+          part.collider.disabled = false;
+        }
+      }
+    }
+  }
+
   private addTree(x: number, z: number): void {
     const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 2.2, 8), mat(0x7a5230));
     trunk.position.set(x, 1.1, z);
@@ -507,9 +553,11 @@ export class WorldMap {
     this.addCheckpoint(0, cy + 0.58, cz, 'Cloud Nine');
     const restY = cy, restZ = cz;
 
+    const throwLesson = placeThrowGate(this.climbApi(), restY, restZ + 10, 0xb5651d, 'Throw Lesson', 1, false);
+
     // Obstacle 8: one long straight ramp from Rest Cloud to the checkpoint. No landings, no wall.
-    const slopeZ0 = restZ + 4.4;
-    const slopeY0 = restY + 0.58;
+    const slopeZ0 = throwLesson.z + 2.4;
+    const slopeY0 = throwLesson.y + 0.5;
     const slopeY1 = restY + 17;
     const slopeZ1 = slopeZ0 + 32;
     this.addBallSlope(-3.4, 3.4, slopeZ0, slopeY0, slopeZ1, slopeY1, 'Checkpoint Slope');
@@ -544,13 +592,9 @@ export class WorldMap {
     this.addAsteroid(0, ay + 21, az + 29, 3.4, 'Belt Asteroid');
     this.addCheckpoint(0, ay + 21.4, az + 29, 'Belt Rider');
 
-    // Final ascent: golden steps to the ending ring (Δ SPACE_STEP in low gravity)
     const fy = ay + 21, fz = az + 29;
-    for (let i = 1; i <= 4; i++) {
-      this.addBox(3, 0.8, 3, Math.sin(i * 2.1) * 4, fy + i * SPACE_STEP, fz + i * 5,
-        0xffd54f, { name: `Golden Step ${i}` });
-    }
-    const topY = fy + 4 * SPACE_STEP + 4, topZ = fz + 4 * 5 + 6;
+    const more = appendClimbLevels(this.climbApi(), fy + 0.15, fz + 10, this.checkpoints.length);
+    const topY = more.y + 5, topZ = more.z + 8;
     this.addBox(10, 1, 10, 0, topY - 4, topZ, 0xfff3cd, { name: 'The Summit' });
     this.endingPos.set(0, topY, topZ);
 
@@ -611,6 +655,7 @@ export class WorldMap {
     this.endingRing.position.y = this.endingPos.y + Math.sin(this.time * 1.2) * 0.4;
 
     this.updateHazardBalls(dt);
+    this.updateThrowSwitches();
 
     for (const cl of this.clouds) {
       cl.children.forEach((b, i) => {

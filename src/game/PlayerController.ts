@@ -200,6 +200,7 @@ export class PlayerController {
     this.pos[axis] += amount;
 
     for (const c of world.colliders) {
+      if (c.disabled) continue;
       const minX = this.pos.x - this.radius, maxX = this.pos.x + this.radius;
       const minY = this.pos.y, maxY = this.pos.y + this.height;
       const minZ = this.pos.z - this.radius, maxZ = this.pos.z + this.radius;
