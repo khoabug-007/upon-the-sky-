@@ -498,30 +498,17 @@ export class WorldMap {
     this.addCheckpoint(0, cy + 0.58, cz, 'Cloud Nine');
     const restY = cy, restZ = cz;
 
-    // Obstacle 8: marble slope, then a walkable ramp up to the checkpoint (no grasp wall).
-    this.addTrampoline(0, restY + 0.3, restZ + 3.5, 2, 'Wall Trampoline');
-    const wallBottom = restY + 6, wallTop = restY + 16, wallZ = restZ + 10;
-    this.addBallSlope(-3.1, 3.1, restZ + 3.6, restY + 0.62, wallZ - 1.6, wallBottom - 0.08, 'Marble Slope');
-
-    const landY = wallBottom;
-    const landZ = wallZ - 0.2;
-    this.addBox(8, 0.8, 4.2, 0, landY - 0.4, landZ, 0xb5651d, { name: 'Slope Landing' });
-
-    const climbZ0 = landZ + 2.2;
-    const climbY0 = landY;
-    const climbRun = 16;
-    const climbZ1 = climbZ0 + climbRun;
-    const climbY1 = wallTop + 1;
-    this.addWalkSlope(-3.3, 3.3, climbZ0, climbY0, climbZ1, climbY1, 'Checkpoint Slope', 0xc4a574);
-
-    const deckZ = climbZ1 + 3.4;
-    const deckY = climbY1 - 0.5;
-    this.addBox(9, 1, 7, 0, deckY, deckZ, 0xeceff1, { name: 'Magnet Deck' });
-    this.addSign(['Marbles roll down.', 'Then walk the ramp.', 'SHIFT is slower on slopes.'], -6, wallBottom + 4, wallZ + 2, 0.95);
-    this.addCheckpoint(0, climbY1, deckZ, 'Wall Magnet');
+    // Obstacle 8: one long straight ramp from Rest Cloud to the checkpoint. No landings, no wall.
+    const slopeZ0 = restZ + 4.4;
+    const slopeY0 = restY + 0.58;
+    const slopeY1 = restY + 17;
+    const slopeZ1 = slopeZ0 + 32;
+    this.addBallSlope(-3.4, 3.4, slopeZ0, slopeY0, slopeZ1, slopeY1, 'Checkpoint Slope');
+    this.addSign(['One long ramp.', 'Walk it to the flag.', 'SHIFT is slower on slopes.'], -7, slopeY0 + 6, slopeZ0 + 8, 0.95);
+    this.addCheckpoint(0, slopeY1, slopeZ1, 'Wall Magnet');
 
     // Obstacle 9: rotor gauntlet on the long sky bridge
-    const bridgeY = climbY1 - 0.5, bridgeZ = deckZ + 7;
+    const bridgeY = slopeY1 - 0.5, bridgeZ = slopeZ1 + 4;
     this.addBox(6, 1, 26, 0, bridgeY, bridgeZ + 9, 0xeceff1, { name: 'Sky Bridge' });
     this.addRotor(0, bridgeY + 1.85, bridgeZ + 4, 4.2, 2.6, 0xe74c3c);
     this.addRotor(0, bridgeY + 1.85, bridgeZ + 14, 4.2, -2.9, 0xe67e22);
