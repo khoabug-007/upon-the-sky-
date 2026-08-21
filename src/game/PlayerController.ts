@@ -6,6 +6,8 @@ import type { CameraRig } from './CameraRig';
 
 const WALK_SPEED = 5.5;
 const RUN_SPEED = 9.6;
+/** Sprint cap while feet are on a slope. Restores as soon as you leave it. */
+const SLOPE_RUN_SPEED = 6.0;
 const CRAWL_SPEED = 2.3;
 const JUMP_VEL = 9.6;
 const SPACE_JUMP_VEL = 11.5;
@@ -34,7 +36,7 @@ export class PlayerController {
   facing = 0; // y rotation
   onGround = false;
   crawling = false;
-  grabbing = false;
+  onSlope = false;
   stunTimer = 0;
   /** set by Game when another player picks us up */
   carriedBy: string | null = null;
@@ -45,7 +47,6 @@ export class PlayerController {
   /** Physics pose at the start of the last fixed step — used to interpolate rendering. */
   prevPos = new THREE.Vector3();
 
-  private grabTarget: THREE.Vector3 | null = null;
   private groundCollider: BoxCollider | null = null;
   private tmpF = new THREE.Vector3();
   private tmpR = new THREE.Vector3();
@@ -69,8 +70,7 @@ export class PlayerController {
     this.pos.copy(p);
     this.prevPos.copy(p);
     this.vel.set(0, 0, 0);
-    this.grabbing = false;
-    this.grabTarget = null;
+    this.onSlope = false;
     this.stunTimer = 0;
   }
 
@@ -84,8 +84,6 @@ export class PlayerController {
     this.vel.z += dir.z * power;
     this.vel.y = Math.max(this.vel.y, 5.5);
     this.stunTimer = 0.45;
-    this.grabbing = false;
-    this.grabTarget = null;
   }
 
   update(dt: number, input: Input, cam: CameraRig, world: WorldMap): void {
@@ -104,40 +102,6 @@ export class PlayerController {
 
     if (input.consume('KeyR')) this.crawling = !this.crawling;
 
-    // ----- grasping (hold left mouse near a yellow handle) -----
-    if (input.mouseLeft && !this.grabbing) {
-      const reach = new THREE.Vector3(this.pos.x, this.pos.y + this.height * 0.72, this.pos.z);
-      let best: THREE.Vector3 | null = null;
-      let bestD = 1.45;
-      for (const gp of world.grabPoints) {
-        const d = gp.distanceTo(reach);
-        if (d < bestD) { bestD = d; best = gp; }
-      }
-      if (best) {
-        this.grabbing = true;
-        this.grabTarget = best;
-        this.crawling = false;
-      }
-    }
-    if (this.grabbing) {
-      if (!input.mouseLeft || !this.grabTarget) {
-        this.grabbing = false;
-        this.grabTarget = null;
-      } else {
-        this.pos.set(this.grabTarget.x, this.grabTarget.y - this.height * 0.72, this.grabTarget.z + 0.15);
-        this.vel.set(0, 0, 0);
-        this.onGround = false;
-        if (input.consume('Space')) {
-          // Leap off the wall in the camera direction
-          this.grabbing = false;
-          this.grabTarget = null;
-          cam.forward(this.tmpF);
-          this.vel.set(this.tmpF.x * 3.5, JUMP_VEL * 1.05, this.tmpF.z * 3.5);
-        }
-        return;
-      }
-    }
-
     // ----- movement input -----
     const inSpace = this.pos.y > SPACE_START_Y;
     const move = new THREE.Vector3();
@@ -151,7 +115,9 @@ export class PlayerController {
     const hasInput = move.lengthSq() > 0;
     if (hasInput) move.normalize();
 
-    const targetSpeed = this.crawling ? CRAWL_SPEED : (input.down('ShiftLeft') || input.down('ShiftRight')) ? RUN_SPEED : WALK_SPEED;
+    this.onSlope = this.touchingSlope(world);
+    const runSpeed = this.onSlope ? SLOPE_RUN_SPEED : RUN_SPEED;
+    const targetSpeed = this.crawling ? CRAWL_SPEED : (input.down('ShiftLeft') || input.down('ShiftRight')) ? runSpeed : WALK_SPEED;
     const accel = this.onGround ? 42 : (inSpace ? 8 : 14);
     const desiredX = move.x * targetSpeed;
     const desiredZ = move.z * targetSpeed;
@@ -278,6 +244,16 @@ export class PlayerController {
     }
   }
 
+  private touchingSlope(world: WorldMap): boolean {
+    for (const s of world.slopes) {
+      if (this.pos.x < s.x0 || this.pos.x > s.x1) continue;
+      if (this.pos.z < s.z0 || this.pos.z > s.z1) continue;
+      const ySurf = world.slopeHeight(s, this.pos.z);
+      if (this.pos.y >= ySurf - 0.45 && this.pos.y <= ySurf + 0.7) return true;
+    }
+    return false;
+  }
+
   private stickToSlopes(world: WorldMap): void {
     if (this.vel.y > 1.2) return;
     for (const s of world.slopes) {
@@ -288,6 +264,7 @@ export class PlayerController {
         this.pos.y = ySurf;
         this.vel.y = 0;
         this.onGround = true;
+        this.onSlope = true;
         this.groundCollider = s.pad;
       }
     }

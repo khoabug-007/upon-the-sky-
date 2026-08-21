@@ -114,7 +114,6 @@ export class WorldMap {
   movers: Mover[] = [];
   rotors: Rotor[] = [];
   checkpoints: Checkpoint[] = [];
-  grabPoints: THREE.Vector3[] = [];
   props: Prop[] = [];
   slopes: Slope[] = [];
   hazardBalls: HazardBall[] = [];
@@ -280,27 +279,13 @@ export class WorldMap {
     });
   }
 
-  private addGrabWall(x: number, yBottom: number, yTop: number, z: number, width = 6): void {
-    const h = yTop - yBottom;
-    this.addBox(width, h, 1, x, yBottom + h / 2, z, 0x9575cd, { name: 'Grab Wall' });
-    const handleMat = new THREE.MeshStandardMaterial({ color: 0xffe14d, emissive: 0x6b5900, roughness: 0.35 });
-    for (let y = yBottom + 1.2; y < yTop - 0.2; y += 1.5) {
-      for (let ox = -width / 2 + 1; ox <= width / 2 - 1; ox += 1.7) {
-        const jitter = (Math.random() - 0.5) * 0.5;
-        const handle = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), handleMat);
-        const hp = new THREE.Vector3(x + ox + jitter, y, z - 0.62);
-        handle.position.copy(hp);
-        this.scene.add(handle);
-        this.grabPoints.push(hp);
-      }
-    }
-  }
-
-  private addBallSlope(
+  /** Walkable ramp. Not added to box colliders — PlayerController sticks to the sloped surface. */
+  private addWalkSlope(
     x0: number, x1: number,
     z0: number, y0: number,
     z1: number, y1: number,
-    name = 'Marble Slope'
+    name: string,
+    color = 0xb08968
   ): Slope {
     const width = x1 - x0;
     const run = z1 - z0;
@@ -312,18 +297,13 @@ export class WorldMap {
     const midZ = (z0 + z1) / 2;
     const thick = 0.42;
 
-    const ramp = new THREE.Mesh(new THREE.BoxGeometry(width, thick, len), mat(0xb08968, 0.9));
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(width, thick, len), mat(color, 0.9));
     ramp.rotation.x = -angle;
     ramp.position.set(midX, midY - Math.cos(angle) * (thick / 2), midZ + Math.sin(angle) * (thick / 2));
     ramp.castShadow = true;
     ramp.receiveShadow = true;
     ramp.name = name;
     this.scene.add(ramp);
-
-    const hopper = new THREE.Mesh(new THREE.BoxGeometry(width * 0.92, 0.55, 1.1), mat(0x6d4c41, 0.85));
-    hopper.position.set(midX, y1 + 0.55, z1 - 0.15);
-    hopper.castShadow = true;
-    this.scene.add(hopper);
 
     const curbMat = mat(0x8d6e63, 0.88);
     for (const side of [x0 + 0.12, x1 - 0.12]) {
@@ -341,7 +321,16 @@ export class WorldMap {
     };
     const slope: Slope = { x0, x1, z0, z1, y0, y1, name, pad };
     this.slopes.push(slope);
+    return slope;
+  }
 
+  private addBallSlope(
+    x0: number, x1: number,
+    z0: number, y0: number,
+    z1: number, y1: number,
+    name = 'Marble Slope'
+  ): Slope {
+    const slope = this.addWalkSlope(x0, x1, z0, y0, z1, y1, name, 0xb08968);
     const radius = 0.4;
     for (let i = 0; i < MAX_SLOPE_BALLS; i++) {
       const mesh = new THREE.Mesh(
@@ -509,17 +498,30 @@ export class WorldMap {
     this.addCheckpoint(0, cy + 0.58, cz, 'Cloud Nine');
     const restY = cy, restZ = cz;
 
-    // Obstacle 8: marble slope into the grab wall. Balls roll down; dodge or get bonked.
+    // Obstacle 8: marble slope, then a walkable ramp up to the checkpoint (no grasp wall).
     this.addTrampoline(0, restY + 0.3, restZ + 3.5, 2, 'Wall Trampoline');
     const wallBottom = restY + 6, wallTop = restY + 16, wallZ = restZ + 10;
     this.addBallSlope(-3.1, 3.1, restZ + 3.6, restY + 0.62, wallZ - 1.6, wallBottom - 0.08, 'Marble Slope');
-    this.addGrabWall(0, wallBottom, wallTop, wallZ);
-    this.addBox(9, 1, 7, 0, wallTop + 0.5, wallZ + 3.5, 0xeceff1, { name: 'Magnet Deck' });
-    this.addSign(['Marbles roll down.', 'Sidestep or BONK!', 'Then cling the wall.'], -6, wallBottom + 6, wallZ - 4, 0.95);
-    this.addCheckpoint(0, wallTop + 1, wallZ + 3.5, 'Wall Magnet');
+
+    const landY = wallBottom;
+    const landZ = wallZ - 0.2;
+    this.addBox(8, 0.8, 4.2, 0, landY - 0.4, landZ, 0xb5651d, { name: 'Slope Landing' });
+
+    const climbZ0 = landZ + 2.2;
+    const climbY0 = landY;
+    const climbRun = 16;
+    const climbZ1 = climbZ0 + climbRun;
+    const climbY1 = wallTop + 1;
+    this.addWalkSlope(-3.3, 3.3, climbZ0, climbY0, climbZ1, climbY1, 'Checkpoint Slope', 0xc4a574);
+
+    const deckZ = climbZ1 + 3.4;
+    const deckY = climbY1 - 0.5;
+    this.addBox(9, 1, 7, 0, deckY, deckZ, 0xeceff1, { name: 'Magnet Deck' });
+    this.addSign(['Marbles roll down.', 'Then walk the ramp.', 'SHIFT is slower on slopes.'], -6, wallBottom + 4, wallZ + 2, 0.95);
+    this.addCheckpoint(0, climbY1, deckZ, 'Wall Magnet');
 
     // Obstacle 9: rotor gauntlet on the long sky bridge
-    const bridgeY = wallTop + 0.5, bridgeZ = wallZ + 14;
+    const bridgeY = climbY1 - 0.5, bridgeZ = deckZ + 7;
     this.addBox(6, 1, 26, 0, bridgeY, bridgeZ + 9, 0xeceff1, { name: 'Sky Bridge' });
     this.addRotor(0, bridgeY + 1.85, bridgeZ + 4, 4.2, 2.6, 0xe74c3c);
     this.addRotor(0, bridgeY + 1.85, bridgeZ + 14, 4.2, -2.9, 0xe67e22);

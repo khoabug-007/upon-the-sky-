@@ -498,7 +498,6 @@ export class Game {
     const c = this.controller;
     if (c.endingMode) return 'float';
     if (c.carriedBy) return 'carried';
-    if (c.grabbing) return 'grab';
     if (c.crawling) return 'crawl';
     if (!c.onGround) return c.vel.y > 1 ? 'jump' : (c.pos.y > SPACE_START_Y ? 'float' : 'fall');
     const speed = Math.hypot(c.vel.x, c.vel.z);

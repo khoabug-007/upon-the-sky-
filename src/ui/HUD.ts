@@ -43,7 +43,7 @@ export class HUD {
           <span>Punch</span><b>E</b>
           <span>Pick up</span><b>Q</b>
           <span>Throw</span><b>B</b>
-          <span>Grasp</span><b>hold LEFT MOUSE</b>
+          <span>Slopes</span><b>run slows</b>
         </div>
         <div class="howto-goal">Climb from the earth to outer space.<br>Teamwork required. Trolling optional (encouraged).</div>
       </div>
