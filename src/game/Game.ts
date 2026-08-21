@@ -41,6 +41,7 @@ export class Game {
   private bursts: Burst[] = [];
   private endingTriggered = false;
   private running = true;
+  private renderPos = new THREE.Vector3();
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -491,6 +492,7 @@ export class Game {
     if (this.input.consume('KeyQ')) this.doPickupOrDrop();
     if (this.input.consume('KeyB')) this.doThrow();
 
+    this.controller.capturePrevPos();
     this.controller.update(dt, this.input, this.cam, this.world);
 
     // If someone carries us, ride on their head
@@ -534,11 +536,14 @@ export class Game {
       this.accumulator -= FIXED_DT;
     }
 
-    // visuals
+    // Grounded: snap to physics so moving pads don't leave the mesh behind (looks like a fling).
+    // Airborne: lerp so jump/fall arcs are smooth without a second camera lag.
+    const alpha = this.controller.onGround ? 1 : this.accumulator / FIXED_DT;
+    this.renderPos.lerpVectors(this.controller.prevPos, this.controller.pos, alpha);
     const anim = this.decideAnim();
     this.character.setAnim(anim);
     this.character.update(rawDt);
-    this.character.group.position.copy(this.controller.pos);
+    this.character.group.position.copy(this.renderPos);
     this.character.group.rotation.y = this.controller.facing;
     if (this.controller.endingMode) this.character.group.rotation.y += rawDt * 0.0;
 
@@ -556,12 +561,13 @@ export class Game {
     this.updateBursts(rawDt);
     this.updateAtmosphere();
     this.hud.setAltitude(this.controller.pos.y);
+    this.hud.setStandingOn(this.controller.standingOnName);
 
     // sun follows player so shadows stay crisp on a 350m tall map
-    this.sun.position.set(this.controller.pos.x + 30, this.controller.pos.y + 55, this.controller.pos.z - 25);
-    this.sun.target.position.copy(this.controller.pos);
+    this.sun.position.set(this.renderPos.x + 30, this.renderPos.y + 55, this.renderPos.z - 25);
+    this.sun.target.position.copy(this.renderPos);
 
-    this.cam.update(this.controller.pos, rawDt);
+    this.cam.update(this.renderPos, rawDt);
     this.renderer.render(this.scene, this.cam.camera);
   };
 }

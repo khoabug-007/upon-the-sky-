@@ -42,23 +42,40 @@ export class PlayerController {
 
   radius = 0.38;
   standHeight = 1.7;
+  /** Physics pose at the start of the last fixed step — used to interpolate rendering. */
+  prevPos = new THREE.Vector3();
 
   private grabTarget: THREE.Vector3 | null = null;
   private groundCollider: BoxCollider | null = null;
   private tmpF = new THREE.Vector3();
   private tmpR = new THREE.Vector3();
 
+  /** Feet this close to a box top count as standing on it, not inside a wall. */
+  private static readonly FLOOR_SKIN = 0.28;
+
   onBounce: (() => void) | null = null;
   onRotorHit: (() => void) | null = null;
 
   get height(): number { return this.crawling ? 0.72 : this.standHeight; }
 
+  /** Name of the surface underfoot, or null while airborne. */
+  get standingOnName(): string | null {
+    if (!this.onGround) return null;
+    return this.groundCollider?.name ?? null;
+  }
+
   teleport(p: THREE.Vector3): void {
     this.pos.copy(p);
+    this.prevPos.copy(p);
     this.vel.set(0, 0, 0);
     this.grabbing = false;
     this.grabTarget = null;
     this.stunTimer = 0;
+  }
+
+  /** Call once per physics tick before update() so the renderer can lerp. */
+  capturePrevPos(): void {
+    this.prevPos.copy(this.pos);
   }
 
   applyKnockback(dir: THREE.Vector3, power = 10): void {
@@ -149,19 +166,27 @@ export class PlayerController {
       this.facing += diff * Math.min(1, 14 * dt);
     }
 
-    // ----- jump & gravity -----
+    // ----- jump, ride pads, gravity -----
+    const ride = (this.onGround && this.groundCollider?.moverIndex !== undefined)
+      ? world.movers[this.groundCollider.moverIndex]
+      : null;
+    const rideVy = ride ? ride.delta.y / Math.max(dt, 1e-6) : 0;
+
     if (!stunned && this.onGround && input.consume('Space')) {
-      this.vel.y = this.crawling ? JUMP_VEL * 0.55 : (inSpace ? SPACE_JUMP_VEL : JUMP_VEL);
+      const jumpVel = this.crawling ? JUMP_VEL * 0.55 : (inSpace ? SPACE_JUMP_VEL : JUMP_VEL);
+      this.vel.y = jumpVel + Math.max(0, rideVy);
       this.onGround = false;
     }
+
+    if (ride) {
+      // Glue XZ every ride frame (including the jump takeoff frame).
+      this.pos.x += ride.delta.x;
+      this.pos.z += ride.delta.z;
+      if (this.onGround) this.pos.y = ride.collider.max.y;
+    }
+
     this.vel.y += (inSpace ? SPACE_GRAVITY : GRAVITY) * dt;
     this.vel.y = Math.max(this.vel.y, -40);
-
-    // ----- ride moving platforms -----
-    if (this.onGround && this.groundCollider?.moverIndex !== undefined) {
-      const mover = world.movers[this.groundCollider.moverIndex];
-      this.pos.add(mover.delta);
-    }
 
     // ----- integrate with axis-separated collision -----
     this.moveAxis(world, 'x', this.vel.x * dt);
@@ -205,7 +230,6 @@ export class PlayerController {
     this.pos[axis] += amount;
 
     for (const c of world.colliders) {
-      // recompute bounds each iteration; a previous push-out may have moved us
       const minX = this.pos.x - this.radius, maxX = this.pos.x + this.radius;
       const minY = this.pos.y, maxY = this.pos.y + this.height;
       const minZ = this.pos.z - this.radius, maxZ = this.pos.z + this.radius;
@@ -213,14 +237,27 @@ export class PlayerController {
       if (maxY <= c.min.y || minY >= c.max.y) continue;
       if (maxZ <= c.min.z || minZ >= c.max.z) continue;
 
-      if (axis === 'x') {
-        this.pos.x = amount > 0 ? c.min.x - this.radius : c.max.x + this.radius;
-        this.vel.x = 0;
-      } else if (axis === 'z') {
-        this.pos.z = amount > 0 ? c.min.z - this.radius : c.max.z + this.radius;
-        this.vel.z = 0;
+      const boxH = c.max.y - c.min.y;
+      const solidWall = boxH > 2.2;
+
+      if (axis === 'x' || axis === 'z') {
+        // Floor top: do not treat as a wall.
+        if (this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN) continue;
+        // Higher pad that only the head/torso reaches (clouds/blocks stacked 1.5m, player ~1.7m).
+        // Side-ejecting here is what flung players off obstacle 7.
+        if (this.pos.y < c.min.y) continue;
+        if (axis === 'x') {
+          this.pos.x = amount > 0 ? c.min.x - this.radius : c.max.x + this.radius;
+          this.vel.x = 0;
+        } else {
+          this.pos.z = amount > 0 ? c.min.z - this.radius : c.max.z + this.radius;
+          this.vel.z = 0;
+        }
       } else {
-        if (amount <= 0) {
+        const prevY = this.pos.y - amount;
+        const crossedTop = amount <= 0 && prevY >= c.max.y - 0.08 && this.pos.y <= c.max.y;
+        const inTopSkin = amount <= 0 && this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN;
+        if (crossedTop || inTopSkin) {
           this.pos.y = c.max.y;
           if (c.bouncy && landingCheck) {
             this.vel.y = TRAMPOLINE_BOUNCE_VEL;
@@ -230,10 +267,11 @@ export class PlayerController {
             this.onGround = true;
             this.groundCollider = c;
           }
-        } else {
+        } else if (amount > 0 && solidWall) {
           this.pos.y = c.min.y - this.height;
           this.vel.y = 0;
         }
+        // else: one-way pad — pass through from below / ignore glancing hits
       }
     }
   }

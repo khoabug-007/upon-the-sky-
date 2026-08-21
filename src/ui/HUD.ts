@@ -24,6 +24,8 @@ export class HUD {
   private altEl: HTMLElement;
   private serverEl: HTMLElement;
   private endingEl: HTMLElement;
+  private standEl: HTMLElement;
+  private standNameEl: HTMLElement;
   private toastTimer: number | null = null;
 
   onPlayAgain: (() => void) | null = null;
@@ -51,6 +53,10 @@ export class HUD {
         <div class="server-players" id="hud-server-players"></div>
       </div>
       <div class="altitude-panel" id="hud-altitude"></div>
+      <div class="stand-panel hidden" id="hud-stand">
+        <div class="stand-kicker">STANDING ON</div>
+        <div class="stand-name" id="hud-stand-name"></div>
+      </div>
       <div class="toast hidden" id="hud-toast"></div>
       <div class="ending-overlay hidden" id="hud-ending"></div>
     `;
@@ -58,6 +64,8 @@ export class HUD {
     this.altEl = document.getElementById('hud-altitude')!;
     this.serverEl = document.getElementById('hud-server-players')!;
     this.endingEl = document.getElementById('hud-ending')!;
+    this.standEl = document.getElementById('hud-stand')!;
+    this.standNameEl = document.getElementById('hud-stand-name')!;
 
     const codeEl = document.getElementById('hud-server-code')!;
     codeEl.addEventListener('click', () => {
@@ -86,6 +94,15 @@ export class HUD {
     let tier = ALTITUDE_TIERS[0][1];
     for (const [minY, label] of ALTITUDE_TIERS) if (y >= minY) tier = label;
     this.altEl.innerHTML = `Altitude: <b>${Math.max(0, Math.round(y))} m</b><br><span>${tier}</span>`;
+  }
+
+  setStandingOn(name: string | null): void {
+    if (!name) {
+      this.standEl.classList.add('hidden');
+      return;
+    }
+    this.standNameEl.textContent = name;
+    this.standEl.classList.remove('hidden');
   }
 
   toast(msg: string, ms = 3200): void {
