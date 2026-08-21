@@ -222,22 +222,27 @@ export class WorldMap {
     const g = new THREE.Group();
     const cm = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
     const blobCount = 5 + Math.floor(Math.random() * 3);
+    const standTop = 0.58;
     for (let i = 0; i < blobCount; i++) {
-      const r = (0.32 + Math.random() * 0.3) * Math.min(w, d);
+      const r = (0.22 + Math.random() * 0.2) * Math.min(w, d);
       const blob = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), cm);
-      blob.position.set((Math.random() - 0.5) * w * 0.8, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * d * 0.8);
-      blob.scale.y = 0.55;
+      blob.scale.y = 0.48;
+      const halfH = r * 0.48;
+      blob.position.set(
+        (Math.random() - 0.5) * w * 0.72,
+        standTop - 0.08 - halfH,
+        (Math.random() - 0.5) * d * 0.72
+      );
       g.add(blob);
     }
     g.position.set(x, y, z);
     this.scene.add(g);
     this.clouds.push(g);
+    const capH = 0.2;
+    const capY = y + standTop - capH / 2;
+    const padW = w * 0.86;
+    const padD = d * 0.86;
     if (moving) {
-      // Invisible mover collider — walkable cap synced with static cloud tops
-      const capH = 0.2;
-      const capY = y + 0.48;
-      const padW = w * 0.92;
-      const padD = d * 0.92;
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(padW, capH, padD),
         new THREE.MeshStandardMaterial({ visible: false }));
       mesh.position.set(x, capY, z);
@@ -245,36 +250,40 @@ export class WorldMap {
       mesh.userData.cloud = g;
       const size = new THREE.Vector3(padW, capH, padD);
       const collider: BoxCollider = {
-        min: new THREE.Vector3(x, y + 0.38, z).sub(new THREE.Vector3(size.x / 2, 0, size.z / 2)),
-        max: new THREE.Vector3(x, y + 0.58, z).add(new THREE.Vector3(size.x / 2, 0, size.z / 2)),
+        min: new THREE.Vector3(x - padW / 2, y + standTop - capH, z - padD / 2),
+        max: new THREE.Vector3(x + padW / 2, y + standTop, z + padD / 2),
         moverIndex: this.movers.length,
         name
       };
       this.colliders.push(collider);
       this.movers.push({
-        mesh, collider, a: new THREE.Vector3(x, capY, z), b: new THREE.Vector3(moving.b.x, moving.b.y + 0.48, moving.b.z),
+        mesh, collider, a: new THREE.Vector3(x, capY, z), b: new THREE.Vector3(moving.b.x, capY, moving.b.z),
         speed: moving.speed, phase: Math.random() * 6, size, delta: new THREE.Vector3()
       });
     } else {
-      // Thin walkable cap above puff visuals (stand on top, not inside the cloud)
       this.colliders.push({
-        min: new THREE.Vector3(x - w * 0.5, y + 0.38, z - d * 0.5),
-        max: new THREE.Vector3(x + w * 0.5, y + 0.58, z + d * 0.5),
+        min: new THREE.Vector3(x - padW / 2, y + standTop - capH, z - padD / 2),
+        max: new THREE.Vector3(x + padW / 2, y + standTop, z + padD / 2),
         name
       });
     }
   }
 
   private addAsteroid(x: number, y: number, z: number, r = 2.6, name = 'Asteroid'): void {
+    const standTop = y + 0.1;
     const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 1), mat(0x6d6875, 0.95));
-    rock.position.set(x, y - r * 0.45, z);
-    rock.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+    rock.position.set(x, y, z);
+    rock.rotation.set(0.15, Math.random() * Math.PI * 2, 0.08);
     rock.castShadow = true; rock.receiveShadow = true;
     rock.name = name;
     this.scene.add(rock);
+    rock.updateMatrixWorld(true);
+    const bbox = new THREE.Box3().setFromObject(rock);
+    rock.position.y += standTop - 0.04 - bbox.max.y;
+    const capR = r * 0.52;
     this.colliders.push({
-      min: new THREE.Vector3(x - r * 0.75, y - r, z - r * 0.75),
-      max: new THREE.Vector3(x + r * 0.75, y + 0.1, z + r * 0.75),
+      min: new THREE.Vector3(x - capR, standTop - 0.22, z - capR),
+      max: new THREE.Vector3(x + capR, standTop, z + capR),
       name
     });
   }
