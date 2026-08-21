@@ -44,7 +44,7 @@ export interface Vec3Msg { x: number; y: number; z: number }
 
 export interface ActionMsg {
   from?: string;
-  type: 'punch' | 'pickup' | 'drop' | 'throw' | 'prop_grab' | 'prop_throw';
+  type: 'punch' | 'pickup' | 'drop' | 'throw' | 'prop_grab' | 'prop_throw' | 'escape';
   target?: string;
   dir?: Vec3Msg;
   propId?: number;

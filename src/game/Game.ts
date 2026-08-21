@@ -11,6 +11,8 @@ import type { ActionMsg, AnimState, JoinResult, Profile } from '../types';
 
 const PROGRESS_KEY = 'uts_progress';
 const FIXED_DT = 1 / 60;
+const STRUGGLE_CLICKS = 8;
+const PICKUP_IMMUNE_MS = 3000;
 
 const GROUND_SKY = new THREE.Color(0x87ceeb);
 const HIGH_SKY = new THREE.Color(0x2c3a8f);
@@ -35,6 +37,8 @@ export class Game {
   private carryingId: string | null = null;
   private heldProp: Prop | null = null;
   private punchCooldown = 0;
+  private struggleClicks = 0;
+  private pickupImmuneUntil = 0;
   private sendTimer = 0;
   private accumulator = 0;
   private clock = new THREE.Clock();
@@ -167,8 +171,14 @@ export class Game {
       }
       case 'pickup': {
         if (a.target === this.network.id && a.from) {
+          if (performance.now() < this.pickupImmuneUntil) {
+            this.network.sendAction({ type: 'escape' });
+            break;
+          }
           this.controller.carriedBy = a.from;
-          this.hud.toast(`${this.remoteName(a.from)} picked you up! This is either teamwork or a war crime.`);
+          this.struggleClicks = 0;
+          this.hud.setStruggle(0, STRUGGLE_CLICKS);
+          this.hud.toast(`${this.remoteName(a.from)} picked you up! Click 8 times to break free.`, 3200);
         }
         break;
       }
@@ -176,6 +186,8 @@ export class Game {
         if (a.target === this.network.id) {
           this.controller.carriedBy = null;
           this.controller.vel.set(0, 0, 0);
+          this.struggleClicks = 0;
+          this.hud.hideStruggle();
         }
         break;
       }
@@ -183,7 +195,16 @@ export class Game {
         if (a.target === this.network.id && a.dir) {
           this.controller.carriedBy = null;
           this.controller.vel.set(a.dir.x * 15, a.dir.y * 15 + 6, a.dir.z * 15);
+          this.struggleClicks = 0;
+          this.hud.hideStruggle();
           this.hud.toast(`YEET! Courtesy of ${this.remoteName(a.from)}.`);
+        }
+        break;
+      }
+      case 'escape': {
+        if (a.from && a.from === this.carryingId) {
+          this.carryingId = null;
+          this.hud.toast(`${this.remoteName(a.from)} wriggled free!`, 2200);
         }
         break;
       }
@@ -235,6 +256,15 @@ export class Game {
       if (d < bestD) { best = p; bestD = d; }
     }
     return best;
+  }
+
+  private breakFree(): void {
+    this.controller.carriedBy = null;
+    this.struggleClicks = 0;
+    this.pickupImmuneUntil = performance.now() + PICKUP_IMMUNE_MS;
+    this.hud.hideStruggle();
+    this.network.sendAction({ type: 'escape' });
+    this.hud.toast('You broke free! Safe for 3 seconds.', 2500);
   }
 
   private doPunch(): void {
@@ -518,14 +548,21 @@ export class Game {
     this.controller.update(dt, this.input, this.cam, this.world);
     this.checkHazardBalls();
 
-    // If someone carries us, ride on their head
+    // If someone carries us, ride on their head and struggle to break free
     if (this.controller.carriedBy) {
       const carrier = this.remotes.get(this.controller.carriedBy);
       if (carrier) {
         this.controller.pos.copy(carrier.character.group.position).add(new THREE.Vector3(0, carrier.character.height + 0.1, 0));
         this.controller.vel.set(0, 0, 0);
+        if (this.input.consume('MouseLeft')) {
+          this.struggleClicks += 1;
+          this.hud.setStruggle(this.struggleClicks, STRUGGLE_CLICKS);
+          if (this.struggleClicks >= STRUGGLE_CLICKS) this.breakFree();
+        }
       } else {
         this.controller.carriedBy = null;
+        this.struggleClicks = 0;
+        this.hud.hideStruggle();
       }
     }
 

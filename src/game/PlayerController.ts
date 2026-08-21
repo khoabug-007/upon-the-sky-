@@ -213,8 +213,6 @@ export class PlayerController {
       if (axis === 'x' || axis === 'z') {
         // Floor top: do not treat as a wall.
         if (this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN) continue;
-        // Bounce pads: walk onto them from the side; Y handles the launch.
-        if (c.bouncy) continue;
         // Higher pad that only the head/torso reaches (clouds/blocks stacked 1.5m, player ~1.7m).
         // Side-ejecting here is what flung players off obstacle 7.
         if (this.pos.y < c.min.y) continue;
@@ -227,6 +225,12 @@ export class PlayerController {
         }
       } else {
         const prevY = this.pos.y - amount;
+        if (c.bouncy && amount <= 0) {
+          this.pos.y = c.max.y;
+          this.vel.y = TRAMPOLINE_BOUNCE_VEL;
+          this.onBounce?.();
+          continue;
+        }
         const crossedTop = amount <= 0 && prevY >= c.max.y - 0.08 && this.pos.y <= c.max.y;
         const inTopSkin = amount <= 0 && this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN;
         if (crossedTop || inTopSkin) {

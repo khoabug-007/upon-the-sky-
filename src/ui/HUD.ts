@@ -26,6 +26,9 @@ export class HUD {
   private endingEl: HTMLElement;
   private standEl: HTMLElement;
   private standNameEl: HTMLElement;
+  private struggleEl: HTMLElement;
+  private struggleFill: SVGCircleElement;
+  private struggleCountEl: HTMLElement;
   private toastTimer: number | null = null;
 
   onPlayAgain: (() => void) | null = null;
@@ -43,6 +46,7 @@ export class HUD {
           <span>Punch</span><b>E</b>
           <span>Pick up</span><b>Q</b>
           <span>Throw</span><b>B</b>
+          <span>Struggle</span><b>click x8</b>
           <span>Slopes</span><b>run slows</b>
         </div>
         <div class="howto-goal">Climb from the earth to outer space.<br>Teamwork required. Trolling optional (encouraged).</div>
@@ -57,6 +61,14 @@ export class HUD {
         <div class="stand-kicker">STANDING ON</div>
         <div class="stand-name" id="hud-stand-name">—</div>
       </div>
+      <div class="struggle-ring hidden" id="hud-struggle">
+        <svg viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="struggle-track" cx="50" cy="50" r="40" />
+          <circle class="struggle-fill" id="hud-struggle-fill" cx="50" cy="50" r="40" />
+        </svg>
+        <div class="struggle-count" id="hud-struggle-count">0/8</div>
+        <div class="struggle-hint">CLICK</div>
+      </div>
       <div class="toast hidden" id="hud-toast"></div>
       <div class="ending-overlay hidden" id="hud-ending"></div>
     `;
@@ -66,6 +78,9 @@ export class HUD {
     this.endingEl = document.getElementById('hud-ending')!;
     this.standEl = document.getElementById('hud-stand')!;
     this.standNameEl = document.getElementById('hud-stand-name')!;
+    this.struggleEl = document.getElementById('hud-struggle')!;
+    this.struggleFill = document.getElementById('hud-struggle-fill') as unknown as SVGCircleElement;
+    this.struggleCountEl = document.getElementById('hud-struggle-count')!;
 
     const codeEl = document.getElementById('hud-server-code')!;
     codeEl.addEventListener('click', () => {
@@ -99,6 +114,22 @@ export class HUD {
   setStandingOn(name: string | null): void {
     this.standNameEl.textContent = name ?? 'Airborne';
     this.standEl.classList.toggle('airborne', !name);
+  }
+
+  setStruggle(clicks: number, max: number): void {
+    this.struggleEl.classList.remove('hidden');
+    const r = 40;
+    const circ = 2 * Math.PI * r;
+    const t = Math.min(1, Math.max(0, clicks / max));
+    this.struggleFill.style.strokeDasharray = `${circ}`;
+    this.struggleFill.style.strokeDashoffset = `${circ * (1 - t)}`;
+    this.struggleCountEl.textContent = `${clicks}/${max}`;
+  }
+
+  hideStruggle(): void {
+    this.struggleEl.classList.add('hidden');
+    this.struggleCountEl.textContent = '0/8';
+    this.struggleFill.style.strokeDashoffset = `${2 * Math.PI * 40}`;
   }
 
   toast(msg: string, ms = 3200): void {

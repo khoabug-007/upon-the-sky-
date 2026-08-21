@@ -67,7 +67,7 @@ export interface HazardBall {
 }
 
 const BALL_COLORS = [0x3498db, 0xe74c3c, 0x9b59b6, 0xf1c40f];
-const MAX_SLOPE_BALLS = 12;
+const MAX_SLOPE_BALLS = 16;
 
 export const SKY_START_Y = 90;
 // Low-gravity kicks in at the sky-bridge cloud (~y 88); matches retuned course pacing
@@ -124,7 +124,7 @@ export class WorldMap {
   private clouds: THREE.Group[] = [];
   private endingRing!: THREE.Mesh;
   private time = 0;
-  private ballSpawnWait = 0.4;
+  private ballSpawnWait = 1;
 
   constructor(private scene: THREE.Scene) {
     this.build();
@@ -331,7 +331,7 @@ export class WorldMap {
     name = 'Marble Slope'
   ): Slope {
     const slope = this.addWalkSlope(x0, x1, z0, y0, z1, y1, name, 0xb08968);
-    const radius = 0.4;
+    const radius = 0.72;
     for (let i = 0; i < MAX_SLOPE_BALLS; i++) {
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(radius, 16, 12),
@@ -620,7 +620,7 @@ export class WorldMap {
       s.y1 + 0.85 + Math.random() * 0.35,
       s.z1 - 0.35 - Math.random() * 0.25
     );
-    ball.vel.set((Math.random() - 0.5) * 2.8, -4.4, -(4.4 + Math.random() * 2.8));
+    ball.vel.set((Math.random() - 0.5) * 3.6, -6, -(7.2 + Math.random() * 3.2));
     const mat = ball.mesh.material as THREE.MeshStandardMaterial;
     mat.color.setHex(BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)]);
     ball.mesh.visible = true;
@@ -631,11 +631,8 @@ export class WorldMap {
   private updateHazardBalls(dt: number): void {
     this.ballSpawnWait -= dt;
     if (this.ballSpawnWait <= 0) {
-      const live = this.hazardBalls.reduce((n, b) => n + (b.active ? 1 : 0), 0);
-      // Sometimes skip a beat so the stream never feels metronomic.
-      if (live < MAX_SLOPE_BALLS && Math.random() > 0.22) this.spawnHazardBall();
-      this.ballSpawnWait = 0.28 + Math.random() * 1.55;
-      if (Math.random() < 0.18) this.ballSpawnWait += 0.7 + Math.random() * 1.4;
+      this.spawnHazardBall();
+      this.ballSpawnWait += 1;
     }
 
     for (const b of this.hazardBalls) {
@@ -653,7 +650,7 @@ export class WorldMap {
       } else {
         b.pos.y = surf;
         const along = b.vel.y * downY + b.vel.z * downZ;
-        const speed = Math.min(14.8, Math.max(8.4, along + 19 * dt));
+        const speed = Math.min(26, Math.max(16, along + 34 * dt));
         b.vel.y = downY * speed;
         b.vel.z = downZ * speed;
         b.vel.x += (Math.random() - 0.5) * 2.2 * dt;

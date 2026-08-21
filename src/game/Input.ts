@@ -12,7 +12,12 @@ export class Input {
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('mousedown', (e) => { if (e.button === 0) this.mouseLeft = true; });
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        this.mouseLeft = true;
+        this.pressed.add('MouseLeft');
+      }
+    });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) this.mouseLeft = false; });
     window.addEventListener('blur', () => { this.keys.clear(); this.mouseLeft = false; });
   }

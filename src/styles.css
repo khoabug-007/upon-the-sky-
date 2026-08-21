@@ -363,6 +363,57 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .stand-panel.airborne .stand-name { color: #aebadd; font-weight: 700; }
 
+.struggle-ring {
+  position: absolute;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  width: 132px;
+  height: 132px;
+  pointer-events: none;
+}
+.struggle-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.struggle-track {
+  fill: none;
+  stroke: rgba(255, 250, 235, 0.18);
+  stroke-width: 8;
+}
+.struggle-fill {
+  fill: none;
+  stroke: #f1c40f;
+  stroke-width: 8;
+  stroke-linecap: round;
+  stroke-dasharray: 251.2;
+  stroke-dashoffset: 251.2;
+  transition: stroke-dashoffset 0.12s ease-out;
+}
+.struggle-count {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  font-size: 28px;
+  color: #fff8e7;
+  padding-bottom: 14px;
+}
+.struggle-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: #c5b07a;
+}
+
 .toast {
   position: absolute;
   top: 13%;
