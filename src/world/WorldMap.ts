@@ -67,7 +67,7 @@ export interface HazardBall {
 }
 
 const BALL_COLORS = [0x3498db, 0xe74c3c, 0x9b59b6, 0xf1c40f];
-const MAX_SLOPE_BALLS = 4;
+const MAX_SLOPE_BALLS = 8;
 
 export const SKY_START_Y = 90;
 // Low-gravity kicks in at the sky-bridge cloud (~y 88); matches retuned course pacing
@@ -335,7 +335,7 @@ export class WorldMap {
     for (let i = 0; i < MAX_SLOPE_BALLS; i++) {
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(radius, 16, 12),
-        new THREE.MeshStandardMaterial({ color: BALL_COLORS[i], roughness: 0.35, metalness: 0.08 })
+        new THREE.MeshStandardMaterial({ color: BALL_COLORS[i % BALL_COLORS.length], roughness: 0.35, metalness: 0.08 })
       );
       mesh.castShadow = true;
       mesh.visible = false;

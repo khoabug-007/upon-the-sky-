@@ -6,8 +6,9 @@ import type { CameraRig } from './CameraRig';
 
 const WALK_SPEED = 5.5;
 const RUN_SPEED = 9.6;
-/** Sprint cap while feet are on a slope. Restores as soon as you leave it. */
-const SLOPE_RUN_SPEED = 6.0;
+/** Movement caps while feet are on a slope. Restores as soon as you leave it. */
+const SLOPE_WALK_SPEED = 2.8;
+const SLOPE_RUN_SPEED = 3.4;
 const CRAWL_SPEED = 2.3;
 const JUMP_VEL = 9.6;
 const SPACE_JUMP_VEL = 11.5;
@@ -116,8 +117,9 @@ export class PlayerController {
     if (hasInput) move.normalize();
 
     this.onSlope = this.touchingSlope(world);
+    const walkSpeed = this.onSlope ? SLOPE_WALK_SPEED : WALK_SPEED;
     const runSpeed = this.onSlope ? SLOPE_RUN_SPEED : RUN_SPEED;
-    const targetSpeed = this.crawling ? CRAWL_SPEED : (input.down('ShiftLeft') || input.down('ShiftRight')) ? runSpeed : WALK_SPEED;
+    const targetSpeed = this.crawling ? CRAWL_SPEED : (input.down('ShiftLeft') || input.down('ShiftRight')) ? runSpeed : walkSpeed;
     const accel = this.onGround ? 42 : (inSpace ? 8 : 14);
     const desiredX = move.x * targetSpeed;
     const desiredZ = move.z * targetSpeed;
