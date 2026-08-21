@@ -67,7 +67,7 @@ export interface HazardBall {
 }
 
 const BALL_COLORS = [0x3498db, 0xe74c3c, 0x9b59b6, 0xf1c40f];
-const MAX_SLOPE_BALLS = 8;
+const MAX_SLOPE_BALLS = 12;
 
 export const SKY_START_Y = 90;
 // Low-gravity kicks in at the sky-bridge cloud (~y 88); matches retuned course pacing
@@ -512,6 +512,7 @@ export class WorldMap {
     this.addBox(6, 1, 26, 0, bridgeY, bridgeZ + 9, 0xeceff1, { name: 'Sky Bridge' });
     this.addRotor(0, bridgeY + 1.85, bridgeZ + 4, 4.2, 1.15, 0xe74c3c);
     this.addRotor(0, bridgeY + 1.85, bridgeZ + 14, 4.2, -1.25, 0xe67e22);
+    this.addTrampoline(0, bridgeY - 0.02, bridgeZ + 21, 1.4, 'Bridge Trampoline');
     this.addCloud(0, bridgeY + 4, bridgeZ + 27, 8, 7, undefined, 'Gauntlet Cloud');
     this.addCheckpoint(0, bridgeY + 4.4, bridgeZ + 27, 'Gauntlet Hero');
 
@@ -619,7 +620,7 @@ export class WorldMap {
       s.y1 + 0.85 + Math.random() * 0.35,
       s.z1 - 0.35 - Math.random() * 0.25
     );
-    ball.vel.set((Math.random() - 0.5) * 1.4, -2.2, -(2.2 + Math.random() * 1.4));
+    ball.vel.set((Math.random() - 0.5) * 2.8, -4.4, -(4.4 + Math.random() * 2.8));
     const mat = ball.mesh.material as THREE.MeshStandardMaterial;
     mat.color.setHex(BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)]);
     ball.mesh.visible = true;
@@ -652,7 +653,7 @@ export class WorldMap {
       } else {
         b.pos.y = surf;
         const along = b.vel.y * downY + b.vel.z * downZ;
-        const speed = Math.min(7.4, Math.max(4.2, along + 9.5 * dt));
+        const speed = Math.min(14.8, Math.max(8.4, along + 19 * dt));
         b.vel.y = downY * speed;
         b.vel.z = downZ * speed;
         b.vel.x += (Math.random() - 0.5) * 2.2 * dt;
@@ -670,7 +671,7 @@ export class WorldMap {
       }
 
       b.mesh.position.copy(b.pos);
-      b.mesh.rotation.x += b.vel.z * dt * 3.2;
+      b.mesh.rotation.x += b.vel.z * dt * 4.4;
       b.mesh.rotation.z -= b.vel.x * dt * 2.4;
     }
   }
