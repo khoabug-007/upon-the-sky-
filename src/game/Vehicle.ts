@@ -5,29 +5,40 @@ import type { WorldMap } from '../world/WorldMap';
 
 export type RiderId = 'me' | string;
 
+/** Local seat mounts: hips sit on these points. Vehicle nose is local -Z. */
 const SEAT_LOCAL: THREE.Vector3[] = [
-  new THREE.Vector3(0.48, 1.12, 1.35),
-  new THREE.Vector3(-0.48, 1.12, 1.35),
-  new THREE.Vector3(0.52, 1.08, -0.15),
-  new THREE.Vector3(-0.52, 1.08, -0.15),
-  new THREE.Vector3(0.52, 1.08, -1.25),
-  new THREE.Vector3(-0.52, 1.08, -1.25)
+  new THREE.Vector3(0.46, 0.98, 1.42),
+  new THREE.Vector3(-0.46, 0.98, 1.42),
+  new THREE.Vector3(0.50, 0.94, -0.05),
+  new THREE.Vector3(-0.50, 0.94, -0.05),
+  new THREE.Vector3(0.50, 0.94, -1.28),
+  new THREE.Vector3(-0.50, 0.94, -1.28)
 ];
 
 const FLOOR_NAMES = new Set([
   'Motor Pool', 'Convoy Road', 'Level 50 Plaza', 'Level 17', 'Level 50'
 ]);
 
-/** 6-seat troop truck. Loads Meshy GLB when present; otherwise a stand-in hull. */
+const WHEELBASE = 3.2;
+const MAX_STEER = 0.40;
+const ENGINE = 7.2;
+const BRAKE = 14;
+const DRAG = 1.35;
+const MAX_FWD = 15;
+const MAX_REV = 5.5;
+
+/** 6-seat troop truck with visible chairs and car-like steering. */
 export class Transport {
   readonly group = new THREE.Group();
   heading = Math.PI;
   speed = 0;
   readonly occupants: Array<RiderId | null> = [null, null, null, null, null, null];
-  readonly half = new THREE.Vector3(1.2, 1.15, 3.15);
-  private model: THREE.Object3D | null = null;
+  readonly half = new THREE.Vector3(1.15, 1.1, 3.05);
+  private steer = 0;
+  private readonly seats: THREE.Group[] = [];
   private readonly _fwd = new THREE.Vector3();
   private readonly _seat = new THREE.Vector3();
+  private readonly _side = new THREE.Vector3();
 
   constructor(scene: THREE.Scene, spawn: { pos: THREE.Vector3; heading: number } | null) {
     if (spawn) {
@@ -38,6 +49,7 @@ export class Transport {
     }
     this.group.rotation.y = this.heading;
     this.buildStandIn();
+    this.buildChairs();
     this.loadMesh();
     scene.add(this.group);
   }
@@ -55,27 +67,35 @@ export class Transport {
 
   enter(id: RiderId): number {
     if (this.seatOf(id) >= 0) return this.seatOf(id);
-    const start = this.occupants[0] ? 1 : 0;
-    for (let i = start; i < 6; i++) {
+    for (let i = 0; i < 6; i++) {
       if (!this.occupants[i]) {
         this.occupants[i] = id;
         return i;
       }
     }
-    if (!this.occupants[0]) {
-      this.occupants[0] = id;
-      return 0;
-    }
     return -1;
+  }
+
+  /** Bolt a character into a chair so they ride with the truck. */
+  attachRider(rider: THREE.Object3D, seatIndex: number): void {
+    const seat = this.seats[seatIndex] ?? this.seats[0];
+    seat.attach(rider);
+    rider.position.set(0, 0.04, 0.1);
+    rider.rotation.set(0, Math.PI, 0);
+  }
+
+  detachRider(rider: THREE.Object3D, scene: THREE.Scene): void {
+    scene.attach(rider);
   }
 
   exit(id: RiderId): THREE.Vector3 | null {
     const i = this.seatOf(id);
     if (i < 0) return null;
     this.occupants[i] = null;
-    if (id === 'me' && !this.occupants[0]) this.speed *= 0.2;
-    const side = i % 2 === 0 ? 2.4 : -2.4;
-    return this.group.position.clone().add(new THREE.Vector3(side, 0.2, 0));
+    if (!this.occupants[0]) this.speed *= 0.25;
+    const side = i % 2 === 0 ? 2.6 : -2.6;
+    this._side.set(side, 0.15, 0).applyEuler(this.group.rotation);
+    return this.group.position.clone().add(this._side);
   }
 
   seatWorld(index: number, out = this._seat): THREE.Vector3 {
@@ -85,35 +105,43 @@ export class Transport {
   }
 
   updateDrive(dt: number, input: Input, world: WorldMap): void {
+    const want = (input.down('KeyA') ? -MAX_STEER : 0) + (input.down('KeyD') ? MAX_STEER : 0);
+    this.steer += (want - this.steer) * Math.min(1, 10 * dt);
+
     const throttle = (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
-    const steer = (input.down('KeyA') ? 1 : 0) - (input.down('KeyD') ? 1 : 0);
-    const max = (input.down('ShiftLeft') || input.down('ShiftRight')) ? 22 : 14;
-    this.speed += throttle * 16 * dt;
-    if (throttle === 0) this.speed *= Math.max(0, 1 - 2.4 * dt);
-    this.speed = THREE.MathUtils.clamp(this.speed, -7, max);
-    if (Math.abs(this.speed) > 0.25) {
-      this.heading += steer * 1.2 * dt * Math.sign(this.speed);
+    const top = (input.down('ShiftLeft') || input.down('ShiftRight')) ? 20 : MAX_FWD;
+    if (throttle > 0) this.speed += ENGINE * dt;
+    else if (throttle < 0) this.speed -= (this.speed > 0.45 ? BRAKE : ENGINE * 0.5) * dt;
+    this.speed -= Math.sign(this.speed) * DRAG * dt;
+    if (Math.abs(this.speed) < 0.04) this.speed = 0;
+    this.speed = THREE.MathUtils.clamp(this.speed, -MAX_REV, top);
+
+    if (Math.abs(this.speed) > 0.45) {
+      this.heading += (this.speed / WHEELBASE) * Math.tan(this.steer) * dt;
     }
+
     this._fwd.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
     const nx = this.group.position.x + this._fwd.x * this.speed * dt;
     const nz = this.group.position.z + this._fwd.z * this.speed * dt;
-    if (!this.blocked(nx, this.group.position.z, world)) this.group.position.x = nx;
-    else this.speed *= 0.4;
-    if (!this.blocked(this.group.position.x, nz, world)) this.group.position.z = nz;
-    else this.speed *= 0.4;
+    if (this.blocked(nx, nz, world)) {
+      this.speed *= 0.35;
+    } else {
+      this.group.position.x = nx;
+      this.group.position.z = nz;
+    }
     this.snapFloor(world);
     this.group.rotation.y = this.heading;
   }
 
   private blocked(x: number, z: number, world: WorldMap): boolean {
     const minX = x - this.half.x, maxX = x + this.half.x;
-    const minY = this.group.position.y + 0.35, maxY = this.group.position.y + this.half.y * 2;
+    const minY = this.group.position.y + 0.4, maxY = this.group.position.y + 2.1;
     const minZ = z - this.half.z, maxZ = z + this.half.z;
     for (const c of world.colliders) {
       if (c.disabled) continue;
       if (c.name && FLOOR_NAMES.has(c.name)) continue;
       const boxH = c.max.y - c.min.y;
-      if (boxH < 1.2) continue;
+      if (boxH < 1.05) continue;
       if (maxX <= c.min.x || minX >= c.max.x) continue;
       if (maxY <= c.min.y || minY >= c.max.y) continue;
       if (maxZ <= c.min.z || minZ >= c.max.z) continue;
@@ -129,16 +157,32 @@ export class Transport {
     const z = this.group.position.z;
     for (const c of world.colliders) {
       if (c.disabled) continue;
+      if (!c.name || !FLOOR_NAMES.has(c.name)) continue;
       if (x < c.min.x || x > c.max.x || z < c.min.z || z > c.max.z) continue;
-      const h = c.max.y - c.min.y;
-      if (h > 2.4) continue;
-      if (c.max.y > top + 4) continue;
       if (!found || c.max.y > top) {
         top = c.max.y;
         found = true;
       }
     }
     if (found) this.group.position.y = top;
+  }
+
+  private buildChairs(): void {
+    const cushion = new THREE.MeshStandardMaterial({ color: 0x3a3d32, roughness: 0.88 });
+    const frame = new THREE.MeshStandardMaterial({ color: 0x2a2c26, roughness: 0.7, metalness: 0.2 });
+    for (let i = 0; i < 6; i++) {
+      const g = new THREE.Group();
+      g.position.copy(SEAT_LOCAL[i]);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 0.44), cushion);
+      pad.position.y = 0;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.08), cushion);
+      back.position.set(0, 0.3, -0.2);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.08), frame);
+      post.position.set(0, -0.14, -0.06);
+      g.add(pad, back, post);
+      this.group.add(g);
+      this.seats.push(g);
+    }
   }
 
   private buildStandIn(): void {
@@ -152,9 +196,7 @@ export class Transport {
     cab.position.set(0, 2.05, 1.7);
     const glass = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.55, 0.08), mat(0x8aa0b8, 0.2));
     glass.position.set(0, 2.15, 2.54);
-    const bed = new THREE.Mesh(new THREE.BoxGeometry(2.05, 0.12, 3.2), mat(0x5a6140));
-    bed.position.set(0, 1.78, -0.85);
-    hull.add(body, cab, glass, bed);
+    hull.add(body, cab, glass);
     for (const sx of [-0.85, 0.85]) {
       for (const sz of [-2.1, -0.3, 1.6]) {
         const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.38, 12), mat(0x1a1a1a, 0.95));
@@ -172,8 +214,10 @@ export class Transport {
       const box = new THREE.Box3().setFromObject(root);
       const size = box.getSize(new THREE.Vector3());
       const longest = Math.max(size.x, size.z, 0.01);
-      const scale = 6.4 / longest;
-      root.scale.setScalar(scale);
+      root.scale.setScalar(6.4 / longest);
+      // Nose along local -Z so heading 0 drives the way the truck faces.
+      root.rotation.y = Math.PI;
+      root.updateMatrixWorld(true);
       box.setFromObject(root);
       root.position.y -= box.min.y;
       root.traverse((o) => {
@@ -185,7 +229,6 @@ export class Transport {
       });
       const standIn = this.group.getObjectByName('stand-in');
       if (standIn) standIn.visible = false;
-      this.model = root;
       this.group.add(root);
     });
   }

@@ -31,7 +31,7 @@ export interface JoinResult {
 
 export type AnimState =
   | 'idle' | 'walk' | 'run' | 'crawl' | 'jump' | 'fall'
-  | 'carried' | 'float' | 'grab';
+  | 'carried' | 'float' | 'grab' | 'sit';
 
 export interface StateMsg {
   x: number; y: number; z: number;

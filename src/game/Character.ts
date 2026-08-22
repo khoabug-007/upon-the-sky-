@@ -253,6 +253,18 @@ export class Character {
         this.legR.rotation.x = -Math.sin(p) * 0.15 + 0.1;
         break;
       }
+      case 'sit': {
+        this.root.position.y = -this.dims.legLen * 0.62;
+        this.root.rotation.x = 0.1;
+        this.legL.rotation.x = 1.28;
+        this.legR.rotation.x = 1.22;
+        this.legL.rotation.z = 0.06;
+        this.legR.rotation.z = -0.06;
+        this.armL.rotation.set(-0.72, 0, 0.32);
+        this.armR.rotation.set(-0.62, 0, -0.22);
+        this.headG.rotation.x = -0.06;
+        break;
+      }
     }
 
     // Punch overlays any pose on the right arm

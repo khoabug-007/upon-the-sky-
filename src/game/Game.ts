@@ -276,8 +276,11 @@ export class Game {
 
   private doEnterOrPunch(): void {
     if (this.vehicle.seatOf('me') >= 0) {
+      this.vehicle.detachRider(this.character.group, this.scene);
       const out = this.vehicle.exit('me');
       if (out) this.controller.teleport(out);
+      this.character.group.position.copy(this.controller.pos);
+      this.character.group.rotation.y = this.controller.facing;
       this.cam.dist = 6.5;
       this.hud.toast('You stepped out. E to get back in.', 1600);
       return;
@@ -288,8 +291,9 @@ export class Game {
         this.hud.toast('All six seats are full.', 1600);
         return;
       }
+      this.vehicle.attachRider(this.character.group, seat);
       this.cam.dist = seat === 0 ? 11 : 8.5;
-      this.hud.toast(seat === 0 ? 'Driving. WASD to roll, E to exit.' : `Passenger seat ${seat + 1}. E to exit.`, 2200);
+      this.hud.toast(seat === 0 ? 'Sit tight. WASD steers the truck, E to hop out.' : `Seated. E to hop out.`, 2200);
       return;
     }
     this.doPunch();
@@ -584,7 +588,7 @@ export class Game {
   private decideAnim(): AnimState {
     const c = this.controller;
     if (c.endingMode) return 'float';
-    if (this.vehicle.seatOf('me') >= 0) return 'idle';
+    if (this.vehicle.seatOf('me') >= 0) return 'sit';
     if (c.carriedBy) return 'carried';
     if (c.crawling) return 'crawl';
     if (!c.onGround) return c.vel.y > 1 ? 'jump' : (c.pos.y > SPACE_START_Y ? 'float' : 'fall');
@@ -607,7 +611,6 @@ export class Game {
     if (mySeat >= 0) {
       if (mySeat === 0) this.vehicle.updateDrive(dt, this.input, this.world);
       this.controller.pos.copy(this.vehicle.seatWorld(mySeat));
-      this.controller.pos.y -= 1.05;
       this.controller.facing = this.vehicle.heading;
       this.controller.vel.set(0, 0, 0);
       this.controller.onGround = true;
@@ -671,8 +674,10 @@ export class Game {
     const anim = this.decideAnim();
     this.character.setAnim(anim);
     this.character.update(rawDt);
-    this.character.group.position.copy(this.renderPos);
-    this.character.group.rotation.y = this.controller.facing;
+    if (this.vehicle.seatOf('me') < 0) {
+      this.character.group.position.copy(this.renderPos);
+      this.character.group.rotation.y = this.controller.facing;
+    }
     if (this.controller.endingMode) this.character.group.rotation.y += rawDt * 0.0;
 
     for (const r of this.remotes.values()) {
