@@ -46,6 +46,7 @@ export class HUD {
           <span>Crawl</span><b>press R</b>
           <span>Jump</span><b>SPACE</b>
           <span>Punch</span><b>E</b>
+          <span>Vehicle</span><b>E enter / exit</b>
           <span>Pick up</span><b>Q</b>
           <span>Throw</span><b>B (onto pads)</b>
           <span>Struggle</span><b>click x8</b>

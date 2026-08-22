@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WorldMap, SPACE_START_Y, type Prop } from '../world/WorldMap';
 import { Character } from './Character';
+import { Transport } from './Vehicle';
 import { PlayerController } from './PlayerController';
 import { CameraRig } from './CameraRig';
 import { Input } from './Input';
@@ -29,6 +30,7 @@ export class Game {
   private hud = new HUD();
 
   private character: Character;
+  private vehicle: Transport;
   private controller = new PlayerController();
   private remotes = new Map<string, RemotePlayer>();
 
@@ -76,6 +78,7 @@ export class Game {
     this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x7a9a5a, 1.0));
 
     this.world = new WorldMap(this.scene);
+    this.vehicle = new Transport(this.scene, this.world.vehicleSpawn);
 
     this.character = new Character(profile.custom, profile.name);
     this.scene.add(this.character.group);
@@ -271,6 +274,27 @@ export class Game {
     this.hud.toast('You broke free! Safe for 3 seconds.', 2500);
   }
 
+  private doEnterOrPunch(): void {
+    if (this.vehicle.seatOf('me') >= 0) {
+      const out = this.vehicle.exit('me');
+      if (out) this.controller.teleport(out);
+      this.cam.dist = 6.5;
+      this.hud.toast('You stepped out. E to get back in.', 1600);
+      return;
+    }
+    if (this.vehicle.near(this.controller.pos, 4.2)) {
+      const seat = this.vehicle.enter('me');
+      if (seat < 0) {
+        this.hud.toast('All six seats are full.', 1600);
+        return;
+      }
+      this.cam.dist = seat === 0 ? 11 : 8.5;
+      this.hud.toast(seat === 0 ? 'Driving. WASD to roll, E to exit.' : `Passenger seat ${seat + 1}. E to exit.`, 2200);
+      return;
+    }
+    this.doPunch();
+  }
+
   private doPunch(): void {
     if (this.punchCooldown > 0) return;
     this.punchCooldown = 0.55;
@@ -424,6 +448,7 @@ export class Game {
   private checkHazardBalls(): void {
     const p = this.controller;
     if (p.stunTimer > 0) return;
+    if (this.vehicle.seatOf('me') >= 0) return;
     const py = p.pos.y + p.height * 0.4;
     for (const b of this.world.hazardBalls) {
       if (!b.active) continue;
@@ -444,6 +469,7 @@ export class Game {
   }
 
   private checkFall(): void {
+    if (this.vehicle.seatOf('me') >= 0) return;
     const cpY = this.currentCheckpoint >= 0 ? this.world.checkpoints[this.currentCheckpoint].pos.y : 0;
     if (this.controller.pos.y < cpY - 45 || this.controller.pos.y < -22) {
       this.controller.teleport(this.respawnPoint());
@@ -558,6 +584,7 @@ export class Game {
   private decideAnim(): AnimState {
     const c = this.controller;
     if (c.endingMode) return 'float';
+    if (this.vehicle.seatOf('me') >= 0) return 'idle';
     if (c.carriedBy) return 'carried';
     if (c.crawling) return 'crawl';
     if (!c.onGround) return c.vel.y > 1 ? 'jump' : (c.pos.y > SPACE_START_Y ? 'float' : 'fall');
@@ -571,12 +598,22 @@ export class Game {
     this.world.update(dt);
     this.punchCooldown = Math.max(0, this.punchCooldown - dt);
 
-    if (this.input.consume('KeyE')) this.doPunch();
+    if (this.input.consume('KeyE')) this.doEnterOrPunch();
     if (this.input.consume('KeyQ')) this.doPickupOrDrop();
     if (this.input.consume('KeyB')) this.doThrow();
 
     this.controller.capturePrevPos();
-    this.controller.update(dt, this.input, this.cam, this.world);
+    const mySeat = this.vehicle.seatOf('me');
+    if (mySeat >= 0) {
+      if (mySeat === 0) this.vehicle.updateDrive(dt, this.input, this.world);
+      this.controller.pos.copy(this.vehicle.seatWorld(mySeat));
+      this.controller.pos.y -= 1.05;
+      this.controller.facing = this.vehicle.heading;
+      this.controller.vel.set(0, 0, 0);
+      this.controller.onGround = true;
+    } else {
+      this.controller.update(dt, this.input, this.cam, this.world);
+    }
     this.checkHazardBalls();
 
     // If someone carries us, ride on their head and struggle to break free

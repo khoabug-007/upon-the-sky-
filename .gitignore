@@ -3,3 +3,5 @@ dist/
 *.log
 .DS_Store
 graphify-out/
+meshy_output/
+public/assets/military-transport_textures/

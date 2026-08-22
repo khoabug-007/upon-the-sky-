@@ -52,6 +52,7 @@ export interface ClimbApi {
   addCheckpoint(x: number, y: number, z: number, label: string): void;
   lastCollider(): { min: THREE.Vector3; max: THREE.Vector3; disabled?: boolean };
   addThrowSwitch(sw: ThrowSwitch): void;
+  addVehicleSpawn(x: number, y: number, z: number, heading: number): void;
 }
 
 const PALETTE = [0xb5651d, 0x9c6b30, 0xcfa15a, 0x7e57c2, 0x5c6bc0, 0x26a69a, 0xeceff1, 0xffd54f];
@@ -83,6 +84,13 @@ export function appendClimbLevels(
       ? Math.min(4.8 + hard * 1.4, SPACE_JUMP_HEIGHT_SAFE - 0.6)
       : Math.min(1.35 + hard * 0.2, JUMP_HEIGHT_SAFE);
     const color = PALETTE[i % PALETTE.length];
+    if (placed === 16 && flag) {
+      ({ y, z } = buildConvoyHighway(api, y, z));
+      placed = 50;
+      wait = segmentsUntilNextFlag(50) - 1;
+      continue;
+    }
+
     const label = flag ? `Level ${placed + 1}` : `Stretch ${already + i + 1}`;
     const kind = hard > 0.45 && i % 7 === 0 ? 6 : i % 10;
 
@@ -122,6 +130,31 @@ export function appendClimbLevels(
 
 function flagAt(api: ClimbApi, x: number, y: number, z: number, label: string, flag: boolean) {
   if (flag) api.addCheckpoint(x, y, z, label);
+}
+
+/** Flat motor pool at Level 17, then a straight road to Level 50. */
+function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
+  const parkW = 22;
+  const parkD = 20;
+  const roadW = 14;
+  const roadLen = 260;
+  api.addBox(parkW, 1, parkD, 0, y, z, 0x4a4f3d, { name: 'Motor Pool' });
+  api.addSign(
+    ['MOTOR POOL', 'Press E to enter / exit.', 'Drive straight to Level 50.'],
+    -8.2, y + 3.4, z - 1.5, 0.9
+  );
+  api.addCheckpoint(0, y + 0.5, z, 'Level 17');
+  api.addVehicleSpawn(3.1, y + 0.5, z + 1.2, Math.PI);
+
+  const roadZ = z + parkD / 2 + roadLen / 2;
+  api.addBox(roadW, 0.85, roadLen, 0, y - 0.05, roadZ, 0x3a3a36, { name: 'Convoy Road' });
+  api.addBox(0.45, 1.15, roadLen, roadW / 2 + 0.25, y + 0.45, roadZ, 0x6d6a5c, { name: 'Road Rail' });
+  api.addBox(0.45, 1.15, roadLen, -roadW / 2 - 0.25, y + 0.45, roadZ, 0x6d6a5c, { name: 'Road Rail' });
+
+  const endZ = z + parkD / 2 + roadLen + 7;
+  api.addBox(16, 1, 16, 0, y, endZ, 0x4a4f3d, { name: 'Level 50 Plaza' });
+  api.addCheckpoint(0, y + 0.5, endZ, 'Level 50');
+  return { y, z: endZ + 10 };
 }
 
 function restPad(api: ClimbApi, y: number, z: number, color: number, label: string, flag: boolean) {

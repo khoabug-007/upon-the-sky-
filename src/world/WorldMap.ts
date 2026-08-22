@@ -120,6 +120,7 @@ export class WorldMap {
   slopes: Slope[] = [];
   hazardBalls: HazardBall[] = [];
   throwSwitches: ThrowSwitch[] = [];
+  vehicleSpawn: { pos: THREE.Vector3; heading: number } | null = null;
   stars!: THREE.Points;
   endingPos = new THREE.Vector3();
   spawnPos = new THREE.Vector3(0, 0.1, -4);
@@ -401,7 +402,10 @@ export class WorldMap {
       addSign: this.addSign.bind(this),
       addCheckpoint: this.addCheckpoint.bind(this),
       lastCollider: () => this.colliders[this.colliders.length - 1]!,
-      addThrowSwitch: (sw) => { this.throwSwitches.push(sw); }
+      addThrowSwitch: (sw) => { this.throwSwitches.push(sw); },
+      addVehicleSpawn: (x, y, z, heading) => {
+        this.vehicleSpawn = { pos: new THREE.Vector3(x, y, z), heading };
+      }
     };
   }
 
