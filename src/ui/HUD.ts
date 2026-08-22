@@ -51,7 +51,7 @@ export class HUD {
           <span>Struggle</span><b>click x8</b>
           <span>Slopes</span><b>run slows</b>
         </div>
-        <div class="howto-goal">Climb 100 checkpoints from earth to outer space.<br>Some gates only open if you throw a crate onto the high pad.</div>
+        <div class="howto-goal">Climb from earth to outer space. Flags thin out after level 20.<br>Some gates only open if you throw a crate onto the high pad.</div>
       </div>
       <div class="server-panel">
         <div class="server-name" id="hud-server-name"></div>
