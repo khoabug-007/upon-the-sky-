@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { appendClimbLevels, placeThrowGate, type ClimbApi, type ThrowSwitch } from './climbCourse';
-import { isSpacePanel, lookMaterial } from './looks';
+import { isLiftName, isSteelPad, lookMaterial } from './looks';
 
 export interface BoxCollider {
   min: THREE.Vector3;
@@ -137,29 +137,27 @@ export class WorldMap {
 
   // ---------- helpers ----------
 
-  private spaceDeck = 0;
+  private meteor = 0;
 
   private addBox(
     w: number, h: number, d: number,
     x: number, y: number, z: number,
     color: number, opts: { bouncy?: boolean; noShadow?: boolean; name?: string } = {}
   ): THREE.Mesh {
-    if (isSpacePanel(color, h, w, d) && !opts.bouncy) {
-      this.spaceDeck += 1;
-      if (this.spaceDeck % 3 !== 0) {
-        return this.addSpaceDeck(w, d, x, y, z, opts.name ?? 'Orbiter Deck');
-      }
+    const name = opts.name ?? 'Block';
+    if (isSteelPad(color) && !opts.bouncy && !isLiftName(name)) {
+      return this.addSteelBar(w, h, d, x, y, z, name);
     }
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
     mesh.position.set(x, y, z);
-    mesh.name = opts.name ?? 'Block';
+    mesh.name = name;
     if (!opts.noShadow) { mesh.castShadow = true; mesh.receiveShadow = true; }
     this.scene.add(mesh);
     this.colliders.push({
       min: new THREE.Vector3(x - w / 2, y - h / 2, z - d / 2),
       max: new THREE.Vector3(x + w / 2, y + h / 2, z + d / 2),
       bouncy: opts.bouncy,
-      name: opts.name ?? 'Block'
+      name
     });
     return mesh;
   }
@@ -195,10 +193,87 @@ export class WorldMap {
     return mesh;
   }
 
+  private steelSize(w: number, h: number, d: number): { bw: number; bh: number; bd: number } {
+    const alongZ = d >= w;
+    const length = Math.max(w, d);
+    const width = THREE.MathUtils.clamp(Math.min(w, d) * 0.4, 0.95, 1.22);
+    const bh = Math.min(0.34, Math.max(0.22, h * 0.45));
+    return alongZ
+      ? { bw: width, bh, bd: length }
+      : { bw: length, bh, bd: width };
+  }
+
+  /** Narrow walkable I-beam. Collider matches the bar so you stand on steel, not air. */
+  private addSteelBar(
+    w: number, h: number, d: number,
+    x: number, y: number, z: number, name: string
+  ): THREE.Mesh {
+    const { bw, bh, bd } = this.steelSize(w, h, d);
+    const top = y + h / 2;
+    const cy = top - bh / 2;
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat(0x90a4ae));
+    mesh.position.set(x, cy, z);
+    mesh.name = name;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    this.colliders.push({
+      min: new THREE.Vector3(x - bw / 2, cy - bh / 2, z - bd / 2),
+      max: new THREE.Vector3(x + bw / 2, cy + bh / 2, z + bd / 2),
+      name
+    });
+    this.dressMesh(mesh, '/assets/steel-beam.glb');
+    return mesh;
+  }
+
   private static craftTpl = new Map<string, THREE.Object3D>();
+  private static craftWait = new Map<string, Array<(src: THREE.Object3D) => void>>();
+
+  private loadCraft(url: string, place: (src: THREE.Object3D) => void): void {
+    const cached = WorldMap.craftTpl.get(url);
+    if (cached) {
+      place(cached);
+      return;
+    }
+    const q = WorldMap.craftWait.get(url);
+    if (q) {
+      q.push(place);
+      return;
+    }
+    WorldMap.craftWait.set(url, [place]);
+    new GLTFLoader().load(url, (gltf) => {
+      WorldMap.craftTpl.set(url, gltf.scene);
+      for (const fn of WorldMap.craftWait.get(url) ?? []) fn(gltf.scene);
+      WorldMap.craftWait.delete(url);
+    });
+  }
+
+  private dressMesh(host: THREE.Mesh, url: string): void {
+    this.loadCraft(url, (src) => {
+      const root = src.clone(true);
+      const box = new THREE.Box3().setFromObject(root);
+      const size = box.getSize(new THREE.Vector3());
+      const g = host.geometry as THREE.BoxGeometry | THREE.SphereGeometry | THREE.BufferGeometry;
+      const p = (g as THREE.BoxGeometry).parameters;
+      const tw = p?.width ?? 1.2;
+      const th = p?.height ?? 0.8;
+      const td = p?.depth ?? 1.2;
+      const sx = tw / Math.max(size.x, 0.01);
+      const sy = th / Math.max(size.y, 0.01);
+      const sz = td / Math.max(size.z, 0.01);
+      root.scale.set(sx, sy, sz);
+      const c = box.getCenter(new THREE.Vector3());
+      root.position.set(-c.x * sx, -c.y * sy, -c.z * sz);
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+      });
+      host.add(root);
+    });
+  }
 
   private addSpaceDeck(w: number, d: number, x: number, y: number, z: number, name: string): THREE.Mesh {
-    const kind = this.spaceDeck % 2 === 0 ? 'shuttle' : 'satellite';
+    const kind = name.length % 2 === 0 ? 'shuttle' : 'satellite';
     const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, 0.22, d * 0.92), mat(0x90a4ae));
     cap.position.set(x, y + 0.2, z);
     cap.name = name;
@@ -264,12 +339,22 @@ export class WorldMap {
     a: THREE.Vector3, b: THREE.Vector3,
     color: number, speed = 1, phase = 0, name = 'Moving Block'
   ): void {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, 0.6));
+    const lift = isLiftName(name);
+    let mw = w, mh = h, md = d;
+    if (isSteelPad(color) && !lift) {
+      const bar = this.steelSize(w, h, d);
+      mw = bar.bw; mh = bar.bh; md = bar.bd;
+    }
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(mw, mh, md),
+      mat(isSteelPad(color) && !lift ? 0x90a4ae : color, 0.6)
+    );
     mesh.castShadow = true; mesh.receiveShadow = true;
     mesh.position.copy(a);
     mesh.name = name;
     this.scene.add(mesh);
-    const size = new THREE.Vector3(w, h, d);
+    if (isSteelPad(color) && !lift) this.dressMesh(mesh, '/assets/steel-beam.glb');
+    const size = new THREE.Vector3(mw, mh, md);
     const collider: BoxCollider = {
       min: a.clone().sub(size.clone().multiplyScalar(0.5)),
       max: a.clone().add(size.clone().multiplyScalar(0.5)),
@@ -362,19 +447,49 @@ export class WorldMap {
 
   private addAsteroid(x: number, y: number, z: number, r = 2.6, name = 'Asteroid'): void {
     const standTop = y + 0.1;
-    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 1), mat(0x6d6875, 0.95));
+    const kind = this.meteor++ % 4;
+    const urls = [
+      '/assets/meteor-flat.glb',
+      '/assets/meteor-sphere.glb',
+      '/assets/meteor-cube.glb',
+      '/assets/meteor-irregular.glb'
+    ];
+    const geos = [
+      new THREE.CylinderGeometry(r, r * 0.9, r * 0.5, 12),
+      new THREE.SphereGeometry(r * 0.7, 14, 12),
+      new THREE.BoxGeometry(r * 1.15, r * 1.05, r * 1.15),
+      new THREE.IcosahedronGeometry(r * 0.78, 0)
+    ];
+    const rock = new THREE.Mesh(geos[kind], mat(0x6d6875, 0.95));
     rock.position.set(x, y, z);
-    rock.rotation.set(0.15, Math.random() * Math.PI * 2, 0.08);
+    rock.rotation.set(0.12, Math.random() * Math.PI * 2, 0.06);
     rock.castShadow = true; rock.receiveShadow = true;
     rock.name = name;
     this.scene.add(rock);
+    this.loadCraft(urls[kind], (src) => {
+      const root = src.clone(true);
+      const box = new THREE.Box3().setFromObject(root);
+      const size = box.getSize(new THREE.Vector3());
+      const s = (r * 1.7) / Math.max(size.x, size.y, size.z, 0.01);
+      root.scale.setScalar(s);
+      root.updateMatrixWorld(true);
+      const after = new THREE.Box3().setFromObject(root);
+      root.position.set(x, standTop - 0.02 - after.max.y, z);
+      root.rotation.copy(rock.rotation);
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+      });
+      rock.visible = false;
+      this.scene.add(root);
+    });
     rock.updateMatrixWorld(true);
     const bbox = new THREE.Box3().setFromObject(rock);
     rock.position.y += standTop - 0.04 - bbox.max.y;
-    const capR = r * 0.52;
+    const capR = r * 0.58;
     this.colliders.push({
       min: new THREE.Vector3(x - capR, standTop - 0.22, z - capR),
-      max: new THREE.Vector3(x + capR, standTop, z + capR),
+      max: new THREE.Vector3(x + capR, standTop + 0.02, z + capR),
       name
     });
   }

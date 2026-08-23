@@ -4,6 +4,7 @@ const BROWN = new Set([0xb5651d, 0x9c6b30, 0xd9a066, 0x7a5230, 0xcfa15a, 0xb07d4
 const YELLOW = new Set([0xffd54f, 0xfff3cd, 0xf39c12, 0xffeb3b, 0xd9a400]);
 const METAL = new Set([0x90a4ae, 0x6d6875, 0xeceff1, 0x8899aa, 0x777788, 0x6d6a5c, 0xcfd8dc]);
 const SPACE = new Set([0x7e57c2, 0x5c6bc0, 0xab47bc]);
+const BLUE = new Set([0x42a5f5, 0x3498db, 0x26a69a]);
 const ASPHALT = 0x3a3a36;
 
 export type LookKind = 'wood' | 'yellowWood' | 'metal' | 'space' | 'asphalt' | 'plain';
@@ -19,6 +20,14 @@ function kindFor(color: number): LookKind {
 
 export function isSpacePanel(color: number, h: number, w: number, d: number): boolean {
   return kindFor(color) === 'space' && h <= 1.25 && Math.min(w, d) >= 2.6;
+}
+
+export function isSteelPad(color: number): boolean {
+  return kindFor(color) === 'space' || BLUE.has(color);
+}
+
+export function isLiftName(name?: string): boolean {
+  return !!name && /lift/i.test(name);
 }
 
 function canvasPlanks(base: string, grain: string): THREE.CanvasTexture {
