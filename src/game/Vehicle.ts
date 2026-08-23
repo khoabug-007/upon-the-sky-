@@ -134,7 +134,7 @@ export class Transport {
       this.group.position.x = nx;
       this.group.position.z = nz;
     }
-    this.snapFloor(world);
+    this.snapFloor(dt, world);
     this.alignToRoad(world);
     this.group.rotation.y = this.heading;
     this.group.rotation.x = this.pitch;
@@ -162,29 +162,28 @@ export class Transport {
     return false;
   }
 
-  private snapFloor(world: WorldMap): void {
-    let top = this.group.position.y;
-    let found = false;
+  private snapFloor(dt: number, world: WorldMap): void {
+    const hint = this.group.position.y;
     const x = this.group.position.x;
     const z = this.group.position.z;
-    for (const c of world.colliders) {
-      if (c.disabled) continue;
-      if (!c.name || !FLOOR_NAMES.has(c.name)) continue;
-      if (x < c.min.x || x > c.max.x || z < c.min.z || z > c.max.z) continue;
-      if (!found || c.max.y > top) {
-        top = c.max.y;
-        found = true;
-      }
-    }
-    if (found) this.group.position.y = top;
+    const top = this.floorY(x, z, world, hint)
+      ?? this.floorY(x + this._fwd.x * 1.6, z + this._fwd.z * 1.6, world, hint)
+      ?? this.floorY(x - this._fwd.x * 1.6, z - this._fwd.z * 1.6, world, hint);
+    if (top !== null) this.group.position.y = top;
+    else this.group.position.y -= 22 * dt;
   }
 
-  private floorY(x: number, z: number, world: WorldMap): number | null {
+  private floorY(x: number, z: number, world: WorldMap, hint = this.group.position.y): number | null {
     let top: number | null = null;
+    let best = Infinity;
     for (const c of world.colliders) {
       if (c.disabled || !c.name || !FLOOR_NAMES.has(c.name)) continue;
-      if (x < c.min.x || x > c.max.x || z < c.min.z || z > c.max.z) continue;
-      if (top === null || c.max.y > top) top = c.max.y;
+      if (!world.containsXZ(c, x, z)) continue;
+      const d = Math.abs(c.max.y - hint);
+      if (d < best) {
+        best = d;
+        top = c.max.y;
+      }
     }
     return top;
   }

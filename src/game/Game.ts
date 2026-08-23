@@ -105,11 +105,13 @@ export class Game {
     this.controller.onBallHit = () => this.hud.toast('BONK! A marble!', 1400);
 
     this.hud.setServer(joinInfo.name ?? 'Server', joinInfo.code ?? '------');
+    this.hud.onCommand = (command) => this.handleChatCommand(command);
     this.hud.onPlayAgain = () => {
       this.currentCheckpoint = -1;
       localStorage.removeItem(PROGRESS_KEY);
       this.endingTriggered = false;
       this.controller.endingMode = false;
+      this.controller.flyMode = false;
       this.controller.teleport(this.world.spawnPos);
       this.cam.snap(this.controller.pos);
       this.hud.toast('Back to the dirt. The sky remembers you.');
@@ -449,8 +451,28 @@ export class Game {
     }
   }
 
+  private handleChatCommand(command: string): void {
+    if (command.toLowerCase() !== 'admin2011') return;
+    this.controller.flyMode = !this.controller.flyMode;
+    this.controller.vel.set(0, 0, 0);
+    this.controller.stunTimer = 0;
+    this.controller.carriedBy = null;
+    this.struggleClicks = 0;
+    this.hud.hideStruggle();
+    if (this.vehicle.seatOf('me') >= 0) {
+      this.vehicle.detachRider(this.character.group, this.scene);
+      this.vehicle.exit('me');
+    }
+    if (this.controller.flyMode) {
+      this.hud.toast('ADMIN FLY: WASD look-steer, Space up, Ctrl/C down, Shift faster. No fall reset.', 5200);
+    } else {
+      this.hud.toast('Admin fly off. Gravity is back.', 2600);
+    }
+  }
+
   private checkHazardBalls(): void {
     const p = this.controller;
+    if (p.flyMode) return;
     if (p.stunTimer > 0) return;
     if (this.vehicle.seatOf('me') >= 0) return;
     const py = p.pos.y + p.height * 0.4;
@@ -473,6 +495,7 @@ export class Game {
   }
 
   private checkFall(): void {
+    if (this.controller.flyMode) return;
     if (this.vehicle.seatOf('me') >= 0) return;
     const cpY = this.currentCheckpoint >= 0 ? this.world.checkpoints[this.currentCheckpoint].pos.y : 0;
     if (this.controller.pos.y < cpY - 45 || this.controller.pos.y < -22) {
@@ -575,8 +598,13 @@ export class Game {
     if (skyT > 0.15) bg.lerp(SPACE_SKY, THREE.MathUtils.smoothstep(skyT, 0.15, 1));
     const fog = this.scene.fog as THREE.Fog;
     fog.color.copy(bg);
-    fog.near = 70 + skyT * 50;
-    fog.far = 320 + THREE.MathUtils.smoothstep(y, 70, 220) * 1400;
+    if (this.controller.flyMode) {
+      fog.near = 400;
+      fog.far = 24000;
+    } else {
+      fog.near = 70 + skyT * 50;
+      fog.far = 320 + THREE.MathUtils.smoothstep(y, 70, 220) * 1400;
+    }
     (this.world.stars.material as THREE.PointsMaterial).opacity =
       THREE.MathUtils.smoothstep(y, 120, 185) * (1 - skyT * 0.55);
     const spaceness = THREE.MathUtils.smoothstep(y, 90, 190);
@@ -588,6 +616,7 @@ export class Game {
   private decideAnim(): AnimState {
     const c = this.controller;
     if (c.endingMode) return 'float';
+    if (c.flyMode) return 'float';
     if (this.vehicle.seatOf('me') >= 0) return 'sit';
     if (c.carriedBy) return 'carried';
     if (c.crawling) return 'crawl';
@@ -607,7 +636,7 @@ export class Game {
     if (this.input.consume('KeyB')) this.doThrow();
 
     this.controller.capturePrevPos();
-    const mySeat = this.vehicle.seatOf('me');
+    const mySeat = this.controller.flyMode ? -1 : this.vehicle.seatOf('me');
     if (mySeat >= 0) {
       if (mySeat === 0) this.vehicle.updateDrive(dt, this.input, this.world);
       this.controller.pos.copy(this.vehicle.seatWorld(mySeat));
@@ -620,6 +649,12 @@ export class Game {
     this.checkHazardBalls();
 
     // If someone carries us, ride on their head and struggle to break free
+    if (this.controller.flyMode && this.controller.carriedBy) {
+      this.controller.carriedBy = null;
+      this.struggleClicks = 0;
+      this.hud.hideStruggle();
+    }
+
     if (this.controller.carriedBy) {
       const carrier = this.remotes.get(this.controller.carriedBy);
       if (carrier) {

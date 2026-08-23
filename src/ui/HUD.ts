@@ -32,8 +32,10 @@ export class HUD {
   private toastTimer: number | null = null;
   private level = 0;
   private totalLevels = 100;
+  private chatInput: HTMLInputElement | null = null;
 
   onPlayAgain: (() => void) | null = null;
+  onCommand: ((command: string) => void) | null = null;
 
   constructor() {
     this.root = document.getElementById('hud-root')!;
@@ -54,10 +56,17 @@ export class HUD {
         </div>
         <div class="howto-goal">Climb from earth to outer space. Flags thin out after level 20.<br>Some gates only open if you throw a crate onto the high pad.</div>
       </div>
-      <div class="server-panel">
-        <div class="server-name" id="hud-server-name"></div>
-        <div class="server-code" id="hud-server-code" title="Click to copy the code"></div>
-        <div class="server-players" id="hud-server-players"></div>
+      <div class="hud-right">
+        <form class="admin-chat" id="hud-chat-form" autocomplete="off">
+          <input id="hud-chat" class="admin-chat-input" type="text" maxlength="48"
+            placeholder="Command…" spellcheck="false" />
+          <button type="submit" class="admin-chat-go" id="hud-chat-go">GO</button>
+        </form>
+        <div class="server-panel">
+          <div class="server-name" id="hud-server-name"></div>
+          <div class="server-code" id="hud-server-code" title="Click to copy the code"></div>
+          <div class="server-players" id="hud-server-players"></div>
+        </div>
       </div>
       <div class="altitude-panel" id="hud-altitude"></div>
       <div class="stand-panel" id="hud-stand">
@@ -89,6 +98,37 @@ export class HUD {
     codeEl.addEventListener('click', () => {
       navigator.clipboard?.writeText(codeEl.dataset.code ?? '');
       this.toast('Server code copied! Send it to your friends.');
+    });
+
+    const form = document.getElementById('hud-chat-form') as HTMLFormElement;
+    this.chatInput = document.getElementById('hud-chat') as HTMLInputElement;
+    const sendChat = () => {
+      const command = (this.chatInput?.value ?? '').trim();
+      if (this.chatInput) this.chatInput.value = '';
+      this.chatInput?.blur();
+      if (command) this.onCommand?.(command);
+    };
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      sendChat();
+    });
+    this.chatInput.addEventListener('keydown', (e) => {
+      if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
+      e.preventDefault();
+      e.stopPropagation();
+      sendChat();
+    });
+    this.chatInput.addEventListener('mousedown', () => {
+      if (document.pointerLockElement) document.exitPointerLock();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
+      const active = document.activeElement;
+      if (active === this.chatInput) return;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+      e.preventDefault();
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.chatInput?.focus();
     });
   }
 

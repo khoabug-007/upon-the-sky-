@@ -165,28 +165,29 @@ function flagAt(api: ClimbApi, x: number, y: number, z: number, label: string, f
   if (flag) api.addCheckpoint(x, y, z, label);
 }
 
-/** Motor pool at Level 17, then a ~780 m helix (3× the old 260 m road) up to Level 50. */
+/** Motor pool at Level 17, then a helix road the troop truck can drive to Level 50. */
 function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
-  const parkW = 22;
-  const parkD = 22;
-  const roadW = 14;
-  const slabD = 18;
-  const R = 36;
-  const steps = 60;
-  const dTheta = 0.36;
-  const rise = 0.5;
-  api.addBox(parkW, 1, parkD, 0, y, z, 0x3a3a36, { name: 'Motor Pool' });
+  const parkW = 24;
+  const parkD = 24;
+  const roadW = 16;
+  const slabD = 20;
+  const slabH = 1;
+  const R = 40;
+  const steps = 72;
+  const dTheta = 0.30;
+  const rise = 0.42;
+  api.addBox(parkW, slabH, parkD, 0, y, z, 0x3a3a36, { name: 'Motor Pool' });
   api.addSign(
-    ['MOTOR POOL', 'Press E to sit inside the cab.', 'Follow the spiral road up to Level 50.'],
+    ['MOTOR POOL', 'Press E to sit inside the cab.', 'Drive the spiral road up to Level 50.'],
     -8.2, y + 3.4, z - 1.5, 0.9
   );
   api.addCheckpoint(0, y + 0.5, z, 'Level 17');
 
-  const zStart = z + parkD / 2 + slabD * 0.42;
+  const zStart = z + parkD / 2 + slabD * 0.32;
   const cx = R;
   const cz = zStart;
-  const spawnHeading = Math.PI;
-  api.addVehicleSpawn(0, y + 0.5, z + 2.2, spawnHeading);
+  api.addOrientedSlab(roadW, slabH, 16, 0, y, z + parkD / 2 + 7, 0, 0x3a3a36, 'Convoy Road');
+  api.addVehicleSpawn(0, y + 0.5, z + 1.2, Math.PI);
 
   let lastX = 0, lastY = y, lastZ = zStart, lastTx = 0, lastTz = 1;
   for (let i = 0; i < steps; i++) {
@@ -197,16 +198,20 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
     const tx = R * Math.cos(th);
     const tz = -R * Math.sin(th);
     const rotY = Math.atan2(tx, tz);
-    api.addOrientedSlab(roadW, 0.7, slabD, px, py, pz, rotY, 0x3a3a36, 'Convoy Road');
+    api.addOrientedSlab(roadW, slabH, slabD, px, py, pz, rotY, 0x3a3a36, 'Convoy Road');
     lastX = px; lastY = py; lastZ = pz; lastTx = tx; lastTz = tz;
   }
 
   const tan = Math.hypot(lastTx, lastTz) || 1;
-  const endX = lastX + (lastTx / tan) * 12;
-  const endZ = lastZ + (lastTz / tan) * 12;
-  api.addBox(16, 1, 16, endX, lastY, endZ, 0x3a3a36, { name: 'Level 50 Plaza' });
+  const ux = lastTx / tan;
+  const uz = lastTz / tan;
+  const exitRot = Math.atan2(lastTx, lastTz);
+  api.addOrientedSlab(roadW, slabH, 16, lastX + ux * 10, lastY, lastZ + uz * 10, exitRot, 0x3a3a36, 'Convoy Road');
+  const endX = lastX + ux * 22;
+  const endZ = lastZ + uz * 22;
+  api.addBox(22, slabH, 22, endX, lastY, endZ, 0x3a3a36, { name: 'Level 50 Plaza' });
   api.addCheckpoint(endX, lastY + 0.5, endZ, 'Level 50');
-  return { x: endX, y: lastY, z: endZ, dx: -lastTx / tan, dz: -lastTz / tan };
+  return { x: endX, y: lastY, z: endZ, dx: -ux, dz: -uz };
 }
 
 function sideOf(dx: number, dz: number, s: number): { x: number; z: number } {
@@ -425,8 +430,10 @@ function puffs(
 ) {
   const w = 6.2 - hard * 1.4;
   api.addCloud(0, y, z, w, w, undefined, `${label} Cloud A`);
-  api.addCloud(2.4 + hard * 1.2, y + rise, z + 7 + hard, w, w, undefined, `${label} Cloud B`);
-  flagAt(api, 0, y + rise + 0.58, z + 7 + hard, label, flag);
+  const bx = 2.4 + hard * 1.2;
+  const bz = z + 7 + hard;
+  api.addCloud(bx, y + rise, bz, w, w, undefined, `${label} Cloud B`);
+  flagAt(api, bx, y + rise + 0.58, bz, label, flag);
   return { y: y + rise, z: z + 16 + hard };
 }
 
@@ -435,8 +442,10 @@ function rocks(
   rise: number, flag: boolean, hard: number
 ) {
   api.addAsteroid(-2 - hard, y, z, 2.5 - hard * 0.35, `${label} Rock A`);
-  api.addAsteroid(2.4 + hard, y + rise, z + 9 + hard * 0.8, 2.8 - hard * 0.3, `${label} Rock B`);
-  flagAt(api, 0, y + rise + 0.1, z + 9 + hard * 0.8, label, flag);
+  const rx = 2.4 + hard;
+  const rz = z + 9 + hard * 0.8;
+  api.addAsteroid(rx, y + rise, rz, 2.8 - hard * 0.3, `${label} Rock B`);
+  flagAt(api, rx, y + rise + 0.1, rz, label, flag);
   return { y: y + rise, z: z + 18 + hard };
 }
 

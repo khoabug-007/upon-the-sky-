@@ -42,6 +42,8 @@ export class PlayerController {
   /** set by Game when another player picks us up */
   carriedBy: string | null = null;
   endingMode = false;
+  /** Local admin fly: no gravity, no collision, no travel cap. */
+  flyMode = false;
 
   radius = 0.38;
   standHeight = 1.7;
@@ -89,6 +91,11 @@ export class PlayerController {
 
   update(dt: number, input: Input, cam: CameraRig, world: WorldMap): void {
     if (this.carriedBy) { this.onGround = false; return; }
+
+    if (this.flyMode) {
+      this.updateFly(dt, input, cam);
+      return;
+    }
 
     if (this.endingMode) {
       // Zero-g farewell float
@@ -192,6 +199,30 @@ export class PlayerController {
           break;
         }
       }
+    }
+  }
+
+  private updateFly(dt: number, input: Input, cam: CameraRig): void {
+    this.onGround = false;
+    this.onSlope = false;
+    this.groundCollider = null;
+    this.stunTimer = 0;
+    cam.lookDir(this.tmpF);
+    cam.right(this.tmpR);
+    const move = new THREE.Vector3();
+    if (input.down('KeyW')) move.add(this.tmpF);
+    if (input.down('KeyS')) move.sub(this.tmpF);
+    if (input.down('KeyD')) move.add(this.tmpR);
+    if (input.down('KeyA')) move.sub(this.tmpR);
+    if (input.down('Space')) move.y += 1;
+    if (input.down('ControlLeft') || input.down('ControlRight') || input.down('KeyC')) move.y -= 1;
+    if (move.lengthSq() > 0) move.normalize();
+    const boost = (input.down('ShiftLeft') || input.down('ShiftRight')) ? 3.2 : 1;
+    const speed = 28 * boost;
+    this.vel.copy(move).multiplyScalar(speed);
+    this.pos.addScaledVector(this.vel, dt);
+    if (move.lengthSq() > 0) {
+      this.facing = Math.atan2(this.tmpF.x, this.tmpF.z);
     }
   }
 

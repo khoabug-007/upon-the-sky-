@@ -10,6 +10,12 @@ export interface BoxCollider {
   moverIndex?: number;
   name?: string;
   disabled?: boolean;
+  /** When set, XZ hit tests use this rotated rectangle instead of the fat AABB. */
+  yaw?: number;
+  cx?: number;
+  cz?: number;
+  halfW?: number;
+  halfD?: number;
 }
 
 export interface Mover {
@@ -188,9 +194,29 @@ export class WorldMap {
     this.colliders.push({
       min: new THREE.Vector3(minX, y - h / 2, minZ),
       max: new THREE.Vector3(maxX, y + h / 2, maxZ),
-      name
+      name,
+      yaw: rotY,
+      cx: x,
+      cz: z,
+      halfW: hw,
+      halfD: hd
     });
     return mesh;
+  }
+
+  /** Point-in-slab: oriented road pieces use their real rectangle, not the fat AABB. */
+  containsXZ(c: BoxCollider, x: number, z: number): boolean {
+    if (c.yaw === undefined || c.cx === undefined || c.cz === undefined
+      || c.halfW === undefined || c.halfD === undefined) {
+      return x >= c.min.x && x <= c.max.x && z >= c.min.z && z <= c.max.z;
+    }
+    const dx = x - c.cx;
+    const dz = z - c.cz;
+    const cos = Math.cos(c.yaw);
+    const sin = Math.sin(c.yaw);
+    const lx = dx * cos - dz * sin;
+    const lz = dx * sin + dz * cos;
+    return Math.abs(lx) <= c.halfW && Math.abs(lz) <= c.halfD;
   }
 
   private steelSize(w: number, h: number, d: number): { bw: number; bh: number; bd: number } {
@@ -384,18 +410,39 @@ export class WorldMap {
     });
   }
 
+  private standTopAt(x: number, z: number, hint: number): number {
+    const tops: number[] = [];
+    for (const c of this.colliders) {
+      if (c.disabled) continue;
+      const name = c.name ?? '';
+      if (/coming soon/i.test(name)) continue;
+      if (name === 'Earth Ground' && hint > 0.25) continue;
+      if (c.max.y - c.min.y > 8) continue;
+      if (!this.containsXZ(c, x, z)) continue;
+      tops.push(c.max.y);
+    }
+    for (const s of this.slopes) {
+      if (x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1) continue;
+      tops.push(this.slopeHeight(s, z));
+    }
+    if (!tops.length) return hint;
+    tops.sort((a, b) => Math.abs(a - hint) - Math.abs(b - hint));
+    return tops[0];
+  }
+
   private addCheckpoint(x: number, y: number, z: number, label: string): void {
     const index = this.checkpoints.length;
-    const pos = new THREE.Vector3(x, y, z);
+    const top = this.standTopAt(x, z, y);
+    const pos = new THREE.Vector3(x, top, z);
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.6, 10), mat(0xcfd8dc, 0.4));
-    pole.position.set(x + 0.9, y + 1.3, z);
+    pole.position.set(x + 0.9, top + 1.3, z);
     const flagMat = new THREE.MeshStandardMaterial({ color: 0x9e9e9e, roughness: 0.5, side: THREE.DoubleSide });
     const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.6), flagMat);
-    flag.position.set(x + 0.9 - 0.5, y + 2.25, z);
+    flag.position.set(x + 0.9 - 0.5, top + 2.25, z);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.09, 10, 40),
       new THREE.MeshStandardMaterial({ color: 0xffd54f, emissive: 0x8a6d00, roughness: 0.35 }));
     ring.rotation.x = Math.PI / 2;
-    ring.position.set(x, y + 0.12, z);
+    ring.position.set(x, top + 0.12, z);
     this.scene.add(pole, flag, ring);
     this.checkpoints.push({ index, pos, ring, flagMat, label });
   }
@@ -695,13 +742,13 @@ export class WorldMap {
       this.addBox(2.2, 1.4, 2.2, (i % 2 === 0 ? -1.6 : 1.6), 0.1, 12.5 + i * 2.4, 0xd9a066,
         { name: `Stepping Stone ${i + 1}` });
     }
-    this.addCheckpoint(0, 0, 24, 'Pond Survivor');
+    this.addCheckpoint(1.6, 0.8, 19.7, 'Pond Survivor');
 
     // Obstacle 2: the angry spinning bar
     this.addBox(14, 0.8, 14, 0, 0.4, 34, 0xcfa15a, { name: 'Rotor Arena' });
     this.addRotor(0, 1.75, 34, 6.4, 1.9);
     this.addSign(['This bar has anger', 'issues. JUMP!'], -6, 3.2, 30, 0.75);
-    this.addCheckpoint(0, 0.8, 42, 'Bar Dodger');
+    this.addCheckpoint(0, 0.8, 34, 'Bar Dodger');
 
     // Obstacle 3: trampoline + tower hops up to the sky road (≤ JUMP_STEP per hop after bounce)
     this.addTrampoline(0, 0, 50, 1.6, 'Pink Trampoline');
@@ -788,7 +835,7 @@ export class WorldMap {
     this.addRotor(0, bridgeY + 1.85, bridgeZ + 14, 4.2, -1.25, 0xe67e22);
     this.addTrampoline(0, bridgeY - 0.02, bridgeZ + 21, 1.4, 'Bridge Trampoline');
     this.addCloud(0, bridgeY + 4, bridgeZ + 27, 8, 7, undefined, 'Gauntlet Cloud');
-    this.addCheckpoint(0, bridgeY + 4.4, bridgeZ + 27, 'Gauntlet Hero');
+    this.addCheckpoint(0, bridgeY + 4.58, bridgeZ + 27, 'Gauntlet Hero');
 
     // ===== SECTION 4: OUTER SPACE =====
     // Obstacle 10: low-gravity asteroid leaps (first hop Δ1.5; then Δ SPACE_STEP in space)
@@ -800,14 +847,14 @@ export class WorldMap {
     }
     this.addAsteroid(0, ay, az, 4, 'Asteroid Rest');
     this.addSign(['Outer space:', 'no air, no lag,', 'no excuses.'], 5, ay + 4, az, 1);
-    this.addCheckpoint(0, ay + 0.4, az, 'Asteroid Hopper');
+    this.addCheckpoint(0, ay + 0.1, az, 'Asteroid Hopper');
 
     // Obstacle 11: the drifting belt
     this.addMover(3.4, 0.8, 3.4, new THREE.Vector3(-6, ay + 5, az + 8), new THREE.Vector3(6, ay + 5, az + 8), 0x7e57c2, 0.9, 0, 'Drift Pad 1');
     this.addMover(3.4, 0.8, 3.4, new THREE.Vector3(6, ay + 10, az + 15), new THREE.Vector3(-6, ay + 10, az + 15), 0x5c6bc0, 1.1, 3, 'Drift Pad 2');
     this.addMover(3.4, 0.8, 3.4, new THREE.Vector3(0, ay + 12, az + 22), new THREE.Vector3(0, ay + 19, az + 22), 0x26a69a, 0.7, 1, 'Space Lift');
     this.addAsteroid(0, ay + 21, az + 29, 3.4, 'Belt Asteroid');
-    this.addCheckpoint(0, ay + 21.4, az + 29, 'Belt Rider');
+    this.addCheckpoint(0, ay + 21.1, az + 29, 'Belt Rider');
 
     const fy = ay + 21, fz = az + 29;
     const more = appendClimbLevels(this.climbApi(), fy + 0.15, fz + 10, this.checkpoints.length);

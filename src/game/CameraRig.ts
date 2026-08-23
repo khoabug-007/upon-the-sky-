@@ -9,7 +9,7 @@ export class CameraRig {
   private lookReady = false;
 
   constructor(private canvas: HTMLCanvasElement) {
-    this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 2800);
+    this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 80000);
     canvas.addEventListener('click', () => {
       if (document.pointerLockElement !== canvas) canvas.requestPointerLock();
     });
@@ -27,6 +27,13 @@ export class CameraRig {
   /** Flat XZ forward direction the player moves along. */
   forward(out: THREE.Vector3): THREE.Vector3 {
     return out.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw)).normalize();
+  }
+
+  /** Camera look direction, including pitch — used for unrestricted fly. */
+  lookDir(out: THREE.Vector3): THREE.Vector3 {
+    const cp = Math.cos(this.pitch);
+    const sp = Math.sin(this.pitch);
+    return out.set(-Math.sin(this.yaw) * cp, -sp, -Math.cos(this.yaw) * cp).normalize();
   }
 
   right(out: THREE.Vector3): THREE.Vector3 {

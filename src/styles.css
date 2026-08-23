@@ -256,7 +256,56 @@ input[type="range"]::-webkit-slider-thumb {
 /* ================= HUD ================= */
 
 #hud-root { position: absolute; inset: 0; pointer-events: none; }
-#hud-root .btn { pointer-events: auto; }
+#hud-root .btn,
+#hud-root input,
+#hud-root .admin-chat { pointer-events: auto; }
+
+.hud-right {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+  width: 260px;
+}
+
+.admin-chat {
+  margin: 0;
+  display: flex;
+  gap: 6px;
+}
+
+.admin-chat-go {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 2px solid rgba(201, 176, 122, 0.7);
+  background: rgba(36, 42, 28, 0.92);
+  color: #fff8e7;
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.admin-chat-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 2px solid rgba(201, 176, 122, 0.55);
+  background: rgba(20, 28, 48, 0.88);
+  color: #fff8e7;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.admin-chat-input::placeholder { color: #9fb0d8; }
+.admin-chat-input:focus { border-color: var(--gold); }
 
 .howto-board {
   position: absolute;
@@ -295,8 +344,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .server-panel {
-  position: absolute;
-  top: 16px; right: 16px;
+  position: static;
   text-align: right;
   background: rgba(20, 28, 48, 0.78);
   color: #fff;
