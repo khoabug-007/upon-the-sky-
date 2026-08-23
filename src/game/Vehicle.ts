@@ -5,15 +5,16 @@ import type { WorldMap } from '../world/WorldMap';
 
 export type RiderId = 'me' | string;
 
-/** Local seat mounts: hips sit on these points. Vehicle nose is local -Z. */
+/** Seats inside the cab / troop bay, not hanging off the sides. Nose is local -Z. */
 const SEAT_LOCAL: THREE.Vector3[] = [
-  new THREE.Vector3(0.46, 0.98, 1.42),
-  new THREE.Vector3(-0.46, 0.98, 1.42),
-  new THREE.Vector3(0.50, 0.94, -0.05),
-  new THREE.Vector3(-0.50, 0.94, -0.05),
-  new THREE.Vector3(0.50, 0.94, -1.28),
-  new THREE.Vector3(-0.50, 0.94, -1.28)
+  new THREE.Vector3(0.28, 1.06, 1.46),
+  new THREE.Vector3(-0.28, 1.06, 1.46),
+  new THREE.Vector3(0.28, 1.04, 0.28),
+  new THREE.Vector3(-0.28, 1.04, 0.28),
+  new THREE.Vector3(0.28, 1.04, -0.62),
+  new THREE.Vector3(-0.28, 1.04, -0.62)
 ];
+const WHEEL_R = 0.48;
 
 const FLOOR_NAMES = new Set([
   'Motor Pool', 'Convoy Road', 'Level 50 Plaza', 'Level 17', 'Level 50'
@@ -36,6 +37,8 @@ export class Transport {
   readonly half = new THREE.Vector3(1.15, 1.1, 3.05);
   private steer = 0;
   private readonly seats: THREE.Group[] = [];
+  private readonly wheels: THREE.Mesh[] = [];
+  private pitch = 0;
   private readonly _fwd = new THREE.Vector3();
   private readonly _seat = new THREE.Vector3();
   private readonly _side = new THREE.Vector3();
@@ -47,8 +50,10 @@ export class Transport {
     } else {
       this.group.position.set(0, -80, 0);
     }
+    this.group.rotation.order = 'YXZ';
     this.group.rotation.y = this.heading;
     this.buildStandIn();
+    this.buildWheels();
     this.buildChairs();
     this.loadMesh();
     scene.add(this.group);
@@ -80,7 +85,7 @@ export class Transport {
   attachRider(rider: THREE.Object3D, seatIndex: number): void {
     const seat = this.seats[seatIndex] ?? this.seats[0];
     seat.attach(rider);
-    rider.position.set(0, 0.04, 0.1);
+    rider.position.set(0, 0.02, 0.04);
     rider.rotation.set(0, Math.PI, 0);
   }
 
@@ -130,7 +135,14 @@ export class Transport {
       this.group.position.z = nz;
     }
     this.snapFloor(world);
+    this.alignToRoad(world);
     this.group.rotation.y = this.heading;
+    this.group.rotation.x = this.pitch;
+    const spin = (this.speed / WHEEL_R) * dt;
+    for (const w of this.wheels) {
+      w.rotation.x += spin;
+      w.rotation.y = w.userData.front ? this.steer : 0;
+    }
   }
 
   private blocked(x: number, z: number, world: WorldMap): boolean {
@@ -167,19 +179,55 @@ export class Transport {
     if (found) this.group.position.y = top;
   }
 
+  private floorY(x: number, z: number, world: WorldMap): number | null {
+    let top: number | null = null;
+    for (const c of world.colliders) {
+      if (c.disabled || !c.name || !FLOOR_NAMES.has(c.name)) continue;
+      if (x < c.min.x || x > c.max.x || z < c.min.z || z > c.max.z) continue;
+      if (top === null || c.max.y > top) top = c.max.y;
+    }
+    return top;
+  }
+
+  private alignToRoad(world: WorldMap): void {
+    const fx = this.group.position.x + this._fwd.x * 1.5;
+    const fz = this.group.position.z + this._fwd.z * 1.5;
+    const bx = this.group.position.x - this._fwd.x * 1.5;
+    const bz = this.group.position.z - this._fwd.z * 1.5;
+    const fy = this.floorY(fx, fz, world);
+    const by = this.floorY(bx, bz, world);
+    if (fy === null || by === null) {
+      this.pitch += (0 - this.pitch) * 0.15;
+      return;
+    }
+    const want = Math.atan2(fy - by, 3);
+    this.pitch += (THREE.MathUtils.clamp(want, -0.35, 0.35) - this.pitch) * 0.2;
+  }
+
+  private buildWheels(): void {
+    const rubber = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.95 });
+    for (const sx of [-0.92, 0.92]) {
+      for (const sz of [-1.85, 1.55]) {
+        const tire = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, 0.36, 14), rubber);
+        tire.rotation.z = Math.PI / 2;
+        tire.position.set(sx, WHEEL_R, sz);
+        tire.userData.front = sz > 0;
+        tire.castShadow = true;
+        this.group.add(tire);
+        this.wheels.push(tire);
+      }
+    }
+  }
+
   private buildChairs(): void {
     const cushion = new THREE.MeshStandardMaterial({ color: 0x3a3d32, roughness: 0.88 });
-    const frame = new THREE.MeshStandardMaterial({ color: 0x2a2c26, roughness: 0.7, metalness: 0.2 });
     for (let i = 0; i < 6; i++) {
       const g = new THREE.Group();
       g.position.copy(SEAT_LOCAL[i]);
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.09, 0.44), cushion);
-      pad.position.y = 0;
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.58, 0.08), cushion);
-      back.position.set(0, 0.3, -0.2);
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.08), frame);
-      post.position.set(0, -0.14, -0.06);
-      g.add(pad, back, post);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.36), cushion);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.42, 0.07), cushion);
+      back.position.set(0, 0.22, -0.16);
+      g.add(pad, back);
       this.group.add(g);
       this.seats.push(g);
     }
@@ -190,21 +238,13 @@ export class Transport {
     hull.name = 'stand-in';
     const mat = (hex: number, rough = 0.82) =>
       new THREE.MeshStandardMaterial({ color: hex, roughness: rough, metalness: 0.22 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.15, 5.6), mat(0x4b5335));
-    body.position.y = 1.15;
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.15, 1.05, 1.7), mat(0x3f462c));
-    cab.position.set(0, 2.05, 1.7);
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.55, 0.08), mat(0x8aa0b8, 0.2));
-    glass.position.set(0, 2.15, 2.54);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.05, 1.05, 5.2), mat(0x4b5335));
+    body.position.y = 1.22;
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.95, 1.55), mat(0x3f462c));
+    cab.position.set(0, 2.05, 1.55);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.06), mat(0x8aa0b8, 0.2));
+    glass.position.set(0, 2.12, 2.32);
     hull.add(body, cab, glass);
-    for (const sx of [-0.85, 0.85]) {
-      for (const sz of [-2.1, -0.3, 1.6]) {
-        const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.38, 12), mat(0x1a1a1a, 0.95));
-        tire.rotation.z = Math.PI / 2;
-        tire.position.set(sx, 0.48, sz);
-        hull.add(tire);
-      }
-    }
     this.group.add(hull);
   }
 

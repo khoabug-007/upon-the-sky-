@@ -254,7 +254,7 @@ export class Character {
         break;
       }
       case 'sit': {
-        this.root.position.y = -this.dims.legLen * 0.62;
+        this.root.position.y = -this.dims.legLen * 0.78;
         this.root.rotation.x = 0.1;
         this.legL.rotation.x = 1.28;
         this.legR.rotation.x = 1.22;

@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { appendClimbLevels, placeThrowGate, type ClimbApi, type ThrowSwitch } from './climbCourse';
+import { isSpacePanel, lookMaterial } from './looks';
 
 export interface BoxCollider {
   min: THREE.Vector3;
@@ -88,8 +90,7 @@ const JUMP_GAP = 2.2;
 /** Half-width of paired slider travel; keeps worst-case 3D hop inside walk reach. */
 const SLIDER_X = 2.2;
 
-const mat = (color: number, rough = 0.85) =>
-  new THREE.MeshStandardMaterial({ color, roughness: rough });
+const mat = (color: number, rough = 0.85) => lookMaterial(color, rough);
 
 function makeSign(text: string[], scale = 1): THREE.Sprite {
   const canvas = document.createElement('canvas');
@@ -136,11 +137,19 @@ export class WorldMap {
 
   // ---------- helpers ----------
 
+  private spaceDeck = 0;
+
   private addBox(
     w: number, h: number, d: number,
     x: number, y: number, z: number,
     color: number, opts: { bouncy?: boolean; noShadow?: boolean; name?: string } = {}
   ): THREE.Mesh {
+    if (isSpacePanel(color, h, w, d) && !opts.bouncy) {
+      this.spaceDeck += 1;
+      if (this.spaceDeck % 3 !== 0) {
+        return this.addSpaceDeck(w, d, x, y, z, opts.name ?? 'Orbiter Deck');
+      }
+    }
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
     mesh.position.set(x, y, z);
     mesh.name = opts.name ?? 'Block';
@@ -153,6 +162,84 @@ export class WorldMap {
       name: opts.name ?? 'Block'
     });
     return mesh;
+  }
+
+  private addOrientedSlab(
+    w: number, h: number, d: number,
+    x: number, y: number, z: number,
+    rotY: number, color: number, name: string
+  ): THREE.Mesh {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = rotY;
+    mesh.name = name;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    const hw = w / 2, hd = d / 2;
+    const c = Math.cos(rotY), s = Math.sin(rotY);
+    const xs = [hw, hw, -hw, -hw];
+    const zs = [hd, -hd, hd, -hd];
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < 4; i++) {
+      const wx = x + xs[i] * c + zs[i] * s;
+      const wz = z - xs[i] * s + zs[i] * c;
+      minX = Math.min(minX, wx); maxX = Math.max(maxX, wx);
+      minZ = Math.min(minZ, wz); maxZ = Math.max(maxZ, wz);
+    }
+    this.colliders.push({
+      min: new THREE.Vector3(minX, y - h / 2, minZ),
+      max: new THREE.Vector3(maxX, y + h / 2, maxZ),
+      name
+    });
+    return mesh;
+  }
+
+  private static craftTpl = new Map<string, THREE.Object3D>();
+
+  private addSpaceDeck(w: number, d: number, x: number, y: number, z: number, name: string): THREE.Mesh {
+    const kind = this.spaceDeck % 2 === 0 ? 'shuttle' : 'satellite';
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, 0.22, d * 0.92), mat(0x90a4ae));
+    cap.position.set(x, y + 0.2, z);
+    cap.name = name;
+    cap.receiveShadow = true;
+    this.scene.add(cap);
+    this.colliders.push({
+      min: new THREE.Vector3(x - w / 2, y - 0.15, z - d / 2),
+      max: new THREE.Vector3(x + w / 2, y + 0.42, z + d / 2),
+      name
+    });
+    const url = kind === 'shuttle' ? '/assets/space-shuttle.glb' : '/assets/space-satellite.glb';
+    const place = (src: THREE.Object3D) => {
+      const root = src.clone(true);
+      const box = new THREE.Box3().setFromObject(root);
+      const size = box.getSize(new THREE.Vector3());
+      root.scale.multiplyScalar(Math.min(w, d) * 0.95 / Math.max(size.x, size.z, 0.01));
+      box.setFromObject(root);
+      root.position.set(x, y + 0.05 - box.min.y, z);
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+      });
+      this.scene.add(root);
+    };
+    const cached = WorldMap.craftTpl.get(url);
+    if (cached) {
+      place(cached);
+      return cap;
+    }
+    new GLTFLoader().load(url, (gltf) => {
+      WorldMap.craftTpl.set(url, gltf.scene);
+      place(gltf.scene);
+    }, undefined, () => {
+      const fallback = new THREE.Mesh(
+        kind === 'shuttle' ? new THREE.BoxGeometry(w * 0.8, 0.7, d * 0.55) : new THREE.OctahedronGeometry(Math.min(w, d) * 0.28, 1),
+        new THREE.MeshStandardMaterial({ color: kind === 'shuttle' ? 0xeeeee8 : 0xc9b037, metalness: 0.4, roughness: 0.35 })
+      );
+      fallback.position.set(x, y + 0.55, z);
+      this.scene.add(fallback);
+    });
+    return cap;
   }
 
   private addTrampoline(x: number, y: number, z: number, r = 1.6, name = 'Trampoline'): void {
@@ -405,7 +492,8 @@ export class WorldMap {
       addThrowSwitch: (sw) => { this.throwSwitches.push(sw); },
       addVehicleSpawn: (x, y, z, heading) => {
         this.vehicleSpawn = { pos: new THREE.Vector3(x, y, z), heading };
-      }
+      },
+      addOrientedSlab: this.addOrientedSlab.bind(this)
     };
   }
 

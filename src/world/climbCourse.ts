@@ -53,6 +53,11 @@ export interface ClimbApi {
   lastCollider(): { min: THREE.Vector3; max: THREE.Vector3; disabled?: boolean };
   addThrowSwitch(sw: ThrowSwitch): void;
   addVehicleSpawn(x: number, y: number, z: number, heading: number): void;
+  addOrientedSlab(
+    w: number, h: number, d: number,
+    x: number, y: number, z: number,
+    rotY: number, color: number, name: string
+  ): THREE.Mesh;
 }
 
 const PALETTE = [0xb5651d, 0x9c6b30, 0xcfa15a, 0x7e57c2, 0x5c6bc0, 0x26a69a, 0xeceff1, 0xffd54f];
@@ -132,29 +137,48 @@ function flagAt(api: ClimbApi, x: number, y: number, z: number, label: string, f
   if (flag) api.addCheckpoint(x, y, z, label);
 }
 
-/** Flat motor pool at Level 17, then a straight road to Level 50. */
+/** Motor pool at Level 17, then a ~780 m helix (3× the old 260 m road) up to Level 50. */
 function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const parkW = 22;
-  const parkD = 20;
+  const parkD = 22;
   const roadW = 14;
-  const roadLen = 260;
-  api.addBox(parkW, 1, parkD, 0, y, z, 0x4a4f3d, { name: 'Motor Pool' });
+  const slabD = 18;
+  const R = 36;
+  const steps = 60;
+  const dTheta = 0.36;
+  const rise = 0.5;
+  api.addBox(parkW, 1, parkD, 0, y, z, 0x3a3a36, { name: 'Motor Pool' });
   api.addSign(
-    ['MOTOR POOL', 'Press E to enter / exit.', 'Drive straight to Level 50.'],
+    ['MOTOR POOL', 'Press E to sit inside the cab.', 'Follow the spiral road up to Level 50.'],
     -8.2, y + 3.4, z - 1.5, 0.9
   );
   api.addCheckpoint(0, y + 0.5, z, 'Level 17');
-  api.addVehicleSpawn(3.1, y + 0.5, z + 1.2, Math.PI);
 
-  const roadZ = z + parkD / 2 + roadLen / 2;
-  api.addBox(roadW, 0.85, roadLen, 0, y - 0.05, roadZ, 0x3a3a36, { name: 'Convoy Road' });
-  api.addBox(0.45, 1.15, roadLen, roadW / 2 + 0.25, y + 0.45, roadZ, 0x6d6a5c, { name: 'Road Rail' });
-  api.addBox(0.45, 1.15, roadLen, -roadW / 2 - 0.25, y + 0.45, roadZ, 0x6d6a5c, { name: 'Road Rail' });
+  const zStart = z + parkD / 2 + slabD * 0.42;
+  const cx = R;
+  const cz = zStart;
+  const spawnHeading = Math.PI;
+  api.addVehicleSpawn(0, y + 0.5, z + 2.2, spawnHeading);
 
-  const endZ = z + parkD / 2 + roadLen + 7;
-  api.addBox(16, 1, 16, 0, y, endZ, 0x4a4f3d, { name: 'Level 50 Plaza' });
-  api.addCheckpoint(0, y + 0.5, endZ, 'Level 50');
-  return { y, z: endZ + 10 };
+  let lastX = 0, lastY = y, lastZ = zStart, lastTx = 0, lastTz = 1;
+  for (let i = 0; i < steps; i++) {
+    const th = -Math.PI / 2 + i * dTheta;
+    const px = cx + R * Math.sin(th);
+    const pz = cz + R * Math.cos(th);
+    const py = y + i * rise;
+    const tx = R * Math.cos(th);
+    const tz = -R * Math.sin(th);
+    const rotY = Math.atan2(tx, tz);
+    api.addOrientedSlab(roadW, 0.7, slabD, px, py, pz, rotY, 0x3a3a36, 'Convoy Road');
+    lastX = px; lastY = py; lastZ = pz; lastTx = tx; lastTz = tz;
+  }
+
+  const tan = Math.hypot(lastTx, lastTz) || 1;
+  const endX = lastX + (lastTx / tan) * 12;
+  const endZ = lastZ + (lastTz / tan) * 12;
+  api.addBox(16, 1, 16, endX, lastY, endZ, 0x3a3a36, { name: 'Level 50 Plaza' });
+  api.addCheckpoint(endX, lastY + 0.5, endZ, 'Level 50');
+  return { y: lastY, z: endZ + 10 };
 }
 
 function restPad(api: ClimbApi, y: number, z: number, color: number, label: string, flag: boolean) {
