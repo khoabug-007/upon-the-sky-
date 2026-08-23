@@ -5,16 +5,16 @@ import type { WorldMap } from '../world/WorldMap';
 
 export type RiderId = 'me' | string;
 
-/** Seats inside the cab / troop bay, not hanging off the sides. Nose is local -Z. */
+/** Seats inside the cab / troop bay. Nose is local -Z after the mesh is turned lengthwise. */
 const SEAT_LOCAL: THREE.Vector3[] = [
-  new THREE.Vector3(0.28, 1.06, 1.46),
-  new THREE.Vector3(-0.28, 1.06, 1.46),
-  new THREE.Vector3(0.28, 1.04, 0.28),
-  new THREE.Vector3(-0.28, 1.04, 0.28),
-  new THREE.Vector3(0.28, 1.04, -0.62),
-  new THREE.Vector3(-0.28, 1.04, -0.62)
+  new THREE.Vector3(0.28, 1.06, -1.85),
+  new THREE.Vector3(-0.28, 1.06, -1.85),
+  new THREE.Vector3(0.28, 1.04, -0.55),
+  new THREE.Vector3(-0.28, 1.04, -0.55),
+  new THREE.Vector3(0.28, 1.04, 0.65),
+  new THREE.Vector3(-0.28, 1.04, 0.65)
 ];
-const WHEEL_R = 0.48;
+const WHEEL_R = 0.42;
 
 const FLOOR_NAMES = new Set([
   'Motor Pool', 'Convoy Road', 'Level 50 Plaza', 'Level 17', 'Level 50'
@@ -37,7 +37,7 @@ export class Transport {
   readonly half = new THREE.Vector3(1.15, 1.1, 3.05);
   private steer = 0;
   private readonly seats: THREE.Group[] = [];
-  private readonly wheels: THREE.Mesh[] = [];
+  private readonly wheels: THREE.Object3D[] = [];
   private pitch = 0;
   private readonly _fwd = new THREE.Vector3();
   private readonly _seat = new THREE.Vector3();
@@ -53,7 +53,6 @@ export class Transport {
     this.group.rotation.order = 'YXZ';
     this.group.rotation.y = this.heading;
     this.buildStandIn();
-    this.buildWheels();
     this.buildChairs();
     this.loadMesh();
     scene.add(this.group);
@@ -140,7 +139,7 @@ export class Transport {
     this.group.rotation.x = this.pitch;
     const spin = (this.speed / WHEEL_R) * dt;
     for (const w of this.wheels) {
-      w.rotation.x += spin;
+      w.rotation.z += spin;
       w.rotation.y = w.userData.front ? this.steer : 0;
     }
   }
@@ -203,21 +202,6 @@ export class Transport {
     this.pitch += (THREE.MathUtils.clamp(want, -0.35, 0.35) - this.pitch) * 0.2;
   }
 
-  private buildWheels(): void {
-    const rubber = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.95 });
-    for (const sx of [-0.92, 0.92]) {
-      for (const sz of [-1.85, 1.55]) {
-        const tire = new THREE.Mesh(new THREE.CylinderGeometry(WHEEL_R, WHEEL_R, 0.36, 14), rubber);
-        tire.rotation.z = Math.PI / 2;
-        tire.position.set(sx, WHEEL_R, sz);
-        tire.userData.front = sz > 0;
-        tire.castShadow = true;
-        this.group.add(tire);
-        this.wheels.push(tire);
-      }
-    }
-  }
-
   private buildChairs(): void {
     const cushion = new THREE.MeshStandardMaterial({ color: 0x3a3d32, roughness: 0.88 });
     for (let i = 0; i < 6; i++) {
@@ -250,12 +234,13 @@ export class Transport {
   private loadMesh(): void {
     new GLTFLoader().load('/assets/military-transport.glb', (gltf) => {
       const root = gltf.scene;
+      this.splitModelWheels(root);
       const box = new THREE.Box3().setFromObject(root);
       const size = box.getSize(new THREE.Vector3());
       const longest = Math.max(size.x, size.z, 0.01);
       root.scale.setScalar(6.4 / longest);
-      // Nose along local -Z so heading 0 drives the way the truck faces.
-      root.rotation.y = Math.PI;
+      // Mesh is modeled along +X (cab at +X). Turn cab to local -Z so W drives lengthwise.
+      if (size.x >= size.z) root.rotation.y = Math.PI / 2;
       root.updateMatrixWorld(true);
       box.setFromObject(root);
       root.position.y -= box.min.y;
@@ -271,4 +256,77 @@ export class Transport {
       this.group.add(root);
     });
   }
+
+  /** Tag the four factory tires, cut them into spinning pivots, leave the hull in place. */
+  private splitModelWheels(root: THREE.Object3D): void {
+    const found: THREE.Mesh[] = [];
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (found.length === 0 && m.isMesh) found.push(m);
+    });
+    const hull = found[0];
+    if (!hull) return;
+    const src = hull.geometry.index ? hull.geometry.toNonIndexed() : hull.geometry.clone();
+    const pos = src.getAttribute('position');
+    if (!pos) return;
+    const tag = new Int8Array(pos.count);
+    for (let i = 0; i < pos.count; i++) {
+      tag[i] = wheelSlot(pos.getX(i), pos.getY(i), pos.getZ(i));
+    }
+    const body = gatherTris(src, tag, 0);
+    if (body) hull.geometry = body;
+    const parent = hull.parent ?? root;
+    for (let slot = 1; slot <= 4; slot++) {
+      const geo = gatherTris(src, tag, slot);
+      if (!geo) continue;
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox!;
+      const center = bb.getCenter(new THREE.Vector3());
+      geo.translate(-center.x, -center.y, -center.z);
+      const mesh = new THREE.Mesh(geo, hull.material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      const pivot = new THREE.Group();
+      pivot.rotation.order = 'YZX';
+      pivot.position.copy(center);
+      pivot.userData.front = slot <= 2;
+      pivot.add(mesh);
+      parent.add(pivot);
+      this.wheels.push(pivot);
+    }
+  }
+}
+
+function wheelSlot(x: number, y: number, z: number): number {
+  if (y > 0.95 || Math.abs(z) < 0.72) return 0;
+  if (x > 1.25) return z > 0 ? 1 : 2;
+  if (x < -1.25) return z > 0 ? 3 : 4;
+  return 0;
+}
+
+function gatherTris(src: THREE.BufferGeometry, tag: Int8Array, slot: number): THREE.BufferGeometry | null {
+  const pos = src.getAttribute('position');
+  const nrm = src.getAttribute('normal');
+  const uv = src.getAttribute('uv');
+  const posOut: number[] = [];
+  const nrmOut: number[] = [];
+  const uvOut: number[] = [];
+  for (let i = 0; i < pos.count; i += 3) {
+    const votes = (tag[i] === slot ? 1 : 0) + (tag[i + 1] === slot ? 1 : 0) + (tag[i + 2] === slot ? 1 : 0);
+    const keep = slot === 0 ? votes === 3 : votes >= 2;
+    if (!keep) continue;
+    for (let k = 0; k < 3; k++) {
+      const v = i + k;
+      posOut.push(pos.getX(v), pos.getY(v), pos.getZ(v));
+      if (nrm) nrmOut.push(nrm.getX(v), nrm.getY(v), nrm.getZ(v));
+      if (uv) uvOut.push(uv.getX(v), uv.getY(v));
+    }
+  }
+  if (posOut.length < 9) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(posOut, 3));
+  if (nrmOut.length) geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrmOut, 3));
+  else geo.computeVertexNormals();
+  if (uvOut.length) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvOut, 2));
+  return geo;
 }
