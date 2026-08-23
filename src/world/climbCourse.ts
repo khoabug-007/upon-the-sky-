@@ -41,10 +41,13 @@ export interface ClimbApi {
     a: THREE.Vector3, b: THREE.Vector3,
     color: number, speed?: number, phase?: number, name?: string
   ): void;
-  addRotor(x: number, y: number, z: number, armLength: number, speed: number, color?: number): void;
+  addRotor(
+    x: number, y: number, z: number, armLength: number, speed: number,
+    color?: number, startAngle?: number
+  ): void;
   addCloud(
     x: number, y: number, z: number, w?: number, d?: number,
-    moving?: { b: THREE.Vector3; speed: number }, name?: string
+    moving?: { b: THREE.Vector3; speed: number }, name?: string, walkable?: boolean
   ): void;
   addAsteroid(x: number, y: number, z: number, r?: number, name?: string): void;
   addProp(x: number, y: number, z: number, kind: 'ball' | 'crate'): void;
@@ -72,14 +75,22 @@ export function appendClimbLevels(
   startY: number,
   startZ: number,
   already: number
-): { y: number; z: number } {
+): { x: number; y: number; z: number } {
+  let x = 0;
   let y = startY;
   let z = startZ;
+  let dx = 0;
+  let dz = 1;
   let placed = already;
   let wait = 0;
   const extra = Math.max(0, TARGET_LEVELS - already);
 
   for (let i = 0; i < extra; i++) {
+    if (placed >= 67) {
+      placeComingSoon(api, x, y, z, dx, dz);
+      break;
+    }
+
     const last = i === extra - 1;
     const flag = last || wait <= 0;
     const progress = extra <= 1 ? 1 : i / (extra - 1);
@@ -90,9 +101,26 @@ export function appendClimbLevels(
       : Math.min(1.35 + hard * 0.2, JUMP_HEIGHT_SAFE);
     const color = PALETTE[i % PALETTE.length];
     if (placed === 16 && flag) {
-      ({ y, z } = buildConvoyHighway(api, y, z));
+      const hwy = buildConvoyHighway(api, y, z);
+      x = hwy.x; y = hwy.y; z = hwy.z;
+      dx = hwy.dx; dz = hwy.dz;
       placed = 50;
-      wait = segmentsUntilNextFlag(50) - 1;
+      wait = 0;
+      continue;
+    }
+
+    if (placed >= 50) {
+      const next = placed + 1;
+      const lateColor = PALETTE[next % PALETTE.length];
+      const label = `Level ${next}`;
+      if (next <= 54) {
+        ({ x, y, z } = backHop(api, x, y, z, dx, dz, lateColor, label));
+      } else if (next <= 60) {
+        ({ x, y, z } = reverseSpin(api, x, y, z, dx, dz, lateColor, label));
+      } else {
+        ({ x, y, z } = spiralUp(api, x, y, z, dx, dz, lateColor, label, next));
+      }
+      placed = next;
       continue;
     }
 
@@ -130,7 +158,7 @@ export function appendClimbLevels(
       wait--;
     }
   }
-  return { y, z };
+  return { x, y, z };
 }
 
 function flagAt(api: ClimbApi, x: number, y: number, z: number, label: string, flag: boolean) {
@@ -178,7 +206,116 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const endZ = lastZ + (lastTz / tan) * 12;
   api.addBox(16, 1, 16, endX, lastY, endZ, 0x3a3a36, { name: 'Level 50 Plaza' });
   api.addCheckpoint(endX, lastY + 0.5, endZ, 'Level 50');
-  return { y: lastY, z: endZ + 10 };
+  return { x: endX, y: lastY, z: endZ, dx: -lastTx / tan, dz: -lastTz / tan };
+}
+
+function sideOf(dx: number, dz: number, s: number): { x: number; z: number } {
+  return { x: -dz * s, z: dx * s };
+}
+
+/** After Level 50: hop back the way you came, still climbing. */
+function backHop(
+  api: ClimbApi, ox: number, y: number, z: number,
+  dx: number, dz: number, color: number, label: string
+): { x: number; y: number; z: number } {
+  const hops = 4;
+  const rise = 1.48;
+  const pad = 2.7;
+  let py = y;
+  let along = 0;
+  for (let i = 0; i < hops; i++) {
+    const side = sideOf(dx, dz, i % 2 ? -0.45 : 0.45);
+    along = i * (pad + WALK_HOP_GAP);
+    py = y + i * rise;
+    api.addBox(pad, 0.7, pad, ox + dx * along + side.x, py, z + dz * along + side.z, color, {
+      name: `${label} Hop ${i + 1}`
+    });
+  }
+  along += 4;
+  const ex = ox + dx * along;
+  const ez = z + dz * along;
+  api.addBox(pad + 1.1, 1, pad + 1.1, ex, py, ez, color, { name: label });
+  flagAt(api, ex, py + 0.5, ez, label, true);
+  return { x: ex, y: py, z: ez };
+}
+
+/** Levels 55–60: spinning bars turn the other way. */
+function reverseSpin(
+  api: ClimbApi, ox: number, y: number, z: number,
+  dx: number, dz: number, color: number, label: string
+): { x: number; y: number; z: number } {
+  const mid = 6;
+  const mx = ox + dx * mid;
+  const mz = z + dz * mid;
+  api.addBox(10, 0.8, 10, mx, y, mz, color, { name: `${label} Arena` });
+  api.addRotor(mx, y + 1.35, mz, 5.0, -1.45, 0xe74c3c);
+  api.addRotor(mx, y + 1.35, mz, 3.2, -2.05, 0xf39c12);
+  const along = mid + 8;
+  const ex = ox + dx * along;
+  const ez = z + dz * along;
+  api.addBox(3.3, 1, 3.3, ex, y, ez, color, { name: label });
+  flagAt(api, ex, y + 0.5, ez, label, true);
+  return { x: ex, y, z: ez };
+}
+
+/** Levels 61–67: pads and rotors climb a rising spiral. */
+function spiralUp(
+  api: ClimbApi, ox: number, y: number, z: number,
+  dx: number, dz: number, color: number, label: string, seed: number
+): { x: number; y: number; z: number } {
+  const pads = 5;
+  const rise = 1.48;
+  const R = 3.0;
+  const step = 2.2;
+  const dAng = 0.7;
+  let lastX = ox, lastY = y, lastZ = z;
+  for (let i = 0; i < pads; i++) {
+    const ang = seed * 0.35 + i * dAng;
+    const px = ox + dx * (i * step) + Math.cos(ang) * R;
+    const pz = z + dz * (i * step) + Math.sin(ang) * R;
+    const py = y + i * rise;
+    api.addBox(2.55, 0.7, 2.55, px, py, pz, color, { name: `${label} Coil ${i + 1}` });
+    api.addRotor(px, py + 1.32, pz, 2.5, 1.2 + i * 0.1, 0xe67e22, ang);
+    lastX = px; lastY = py; lastZ = pz;
+  }
+  flagAt(api, lastX, lastY + 0.5, lastZ, label, true);
+  return { x: lastX, y: lastY, z: lastZ };
+}
+
+function placeComingSoon(
+  api: ClimbApi, x: number, y: number, z: number, dx: number, dz: number
+): void {
+  const plaza = 4;
+  const px = x + dx * plaza;
+  const pz = z + dz * plaza;
+  api.addBox(12, 1, 12, px, y, pz, 0xcfa15a, { name: 'Coming Soon Plaza' });
+  api.addSign(
+    ['LEVELS 68–100', 'COMING SOON'],
+    px - dz * 2.4, y + 7.2, pz + dx * 2.4, 2.5
+  );
+
+  const wallAlong = 16;
+  const wx = px + dx * wallAlong;
+  const wz = pz + dz * wallAlong;
+  const rotY = Math.atan2(dx, dz);
+  api.addOrientedSlab(180, 72, 14, wx, y + 28, wz, rotY, 0xf5f7fa, 'Coming Soon Wall');
+  api.addOrientedSlab(180, 18, 80, wx + dx * 28, y + 68, wz + dz * 28, rotY, 0xf5f7fa, 'Coming Soon Roof');
+
+  for (let i = 0; i < 18; i++) {
+    const s = (i - 8.5) * 9;
+    const side = sideOf(dx, dz, s);
+    const along = 10 + (i % 4) * 5;
+    api.addCloud(
+      px + dx * along + side.x,
+      y + 4 + (i % 5) * 7,
+      pz + dz * along + side.z,
+      16 + (i % 3) * 6,
+      12 + (i % 2) * 5,
+      undefined,
+      `Fog Cloud ${i + 1}`,
+      false
+    );
+  }
 }
 
 function restPad(api: ClimbApi, y: number, z: number, color: number, label: string, flag: boolean) {

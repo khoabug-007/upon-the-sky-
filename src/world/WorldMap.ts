@@ -365,7 +365,10 @@ export class WorldMap {
     this.movers.push({ mesh, collider, a: a.clone(), b: b.clone(), speed, phase, size, delta: new THREE.Vector3() });
   }
 
-  private addRotor(x: number, y: number, z: number, armLength: number, speed: number, color = 0xe74c3c): void {
+  private addRotor(
+    x: number, y: number, z: number, armLength: number, speed: number,
+    color = 0xe74c3c, startAngle?: number
+  ): void {
     const pivot = new THREE.Group();
     pivot.position.set(x, y, z);
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 2.4, 12), mat(0x8899aa));
@@ -375,7 +378,10 @@ export class WorldMap {
     bar.castShadow = true;
     pivot.add(pole, bar);
     this.scene.add(pivot);
-    this.rotors.push({ pivot, center: new THREE.Vector3(x, y, z), armLength, barY: y, speed, angle: Math.random() * Math.PI * 2 });
+    this.rotors.push({
+      pivot, center: new THREE.Vector3(x, y, z), armLength, barY: y, speed,
+      angle: startAngle ?? Math.random() * Math.PI * 2
+    });
   }
 
   private addCheckpoint(x: number, y: number, z: number, label: string): void {
@@ -394,7 +400,10 @@ export class WorldMap {
     this.checkpoints.push({ index, pos, ring, flagMat, label });
   }
 
-  private addCloud(x: number, y: number, z: number, w = 6, d = 5, moving?: { b: THREE.Vector3; speed: number }, name = 'Cloud'): void {
+  private addCloud(
+    x: number, y: number, z: number, w = 6, d = 5,
+    moving?: { b: THREE.Vector3; speed: number }, name = 'Cloud', walkable = true
+  ): void {
     const g = new THREE.Group();
     const cm = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
     const blobCount = 5 + Math.floor(Math.random() * 3);
@@ -414,6 +423,7 @@ export class WorldMap {
     g.position.set(x, y, z);
     this.scene.add(g);
     this.clouds.push(g);
+    if (!walkable) return;
     const capH = 0.2;
     const capY = y + standTop - capH / 2;
     const padW = w * 0.86;
@@ -801,15 +811,12 @@ export class WorldMap {
 
     const fy = ay + 21, fz = az + 29;
     const more = appendClimbLevels(this.climbApi(), fy + 0.15, fz + 10, this.checkpoints.length);
-    const topY = more.y + 5, topZ = more.z + 8;
-    this.addBox(10, 1, 10, 0, topY - 4, topZ, 0xfff3cd, { name: 'The Summit' });
-    this.endingPos.set(0, topY, topZ);
-
+    this.endingPos.set(more.x, -80, more.z);
     this.endingRing = new THREE.Mesh(new THREE.TorusGeometry(3, 0.3, 14, 48),
       new THREE.MeshStandardMaterial({ color: 0xffeb3b, emissive: 0xd9a400, emissiveIntensity: 1.4, roughness: 0.25 }));
     this.endingRing.position.copy(this.endingPos);
+    this.endingRing.visible = false;
     this.scene.add(this.endingRing);
-    this.addSign(['THE END IS UP HERE!', 'Jump through the ring.', 'You earned the sky.'], 0, topY + 6, topZ, 1.3);
 
     // Stars everywhere above the sky line
     const starGeo = new THREE.BufferGeometry();
