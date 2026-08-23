@@ -430,6 +430,27 @@ export class WorldMap {
     return tops[0];
   }
 
+  /** Closest walkable top under (x,z) to hintY, or null if none. */
+  nearestStandY(x: number, z: number, hintY: number): number | null {
+    const tops: number[] = [];
+    for (const c of this.colliders) {
+      if (c.disabled) continue;
+      const name = c.name ?? '';
+      if (/coming soon/i.test(name)) continue;
+      if (name === 'Earth Ground' && hintY > 0.25) continue;
+      if (c.max.y - c.min.y > 8) continue;
+      if (!this.containsXZ(c, x, z)) continue;
+      tops.push(c.max.y);
+    }
+    for (const s of this.slopes) {
+      if (x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1) continue;
+      tops.push(this.slopeHeight(s, z));
+    }
+    if (!tops.length) return null;
+    tops.sort((a, b) => Math.abs(a - hintY) - Math.abs(b - hintY));
+    return tops[0];
+  }
+
   private addCheckpoint(x: number, y: number, z: number, label: string): void {
     const index = this.checkpoints.length;
     const top = this.standTopAt(x, z, y);

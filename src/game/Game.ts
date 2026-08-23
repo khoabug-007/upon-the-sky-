@@ -48,6 +48,8 @@ export class Game {
   private clock = new THREE.Clock();
   private bursts: Burst[] = [];
   private endingTriggered = false;
+  private pendingFlyLand = false;
+  private afterFlyRefY: number | null = null;
   private running = true;
   private renderPos = new THREE.Vector3();
 
@@ -112,6 +114,8 @@ export class Game {
       this.endingTriggered = false;
       this.controller.endingMode = false;
       this.controller.flyMode = false;
+      this.pendingFlyLand = false;
+      this.afterFlyRefY = null;
       this.controller.teleport(this.world.spawnPos);
       this.cam.snap(this.controller.pos);
       this.hud.toast('Back to the dirt. The sky remembers you.');
@@ -442,6 +446,7 @@ export class Game {
       if (cp.index <= this.currentCheckpoint) continue;
       if (cp.pos.distanceTo(this.controller.pos) < 3.4) {
         this.currentCheckpoint = cp.index;
+        this.afterFlyRefY = null;
         this.markCheckpointsReached(cp.index);
         localStorage.setItem(PROGRESS_KEY, JSON.stringify({ checkpoint: cp.index }));
         this.hud.checkpointToast(cp.label, cp.index, this.world.checkpoints.length);
@@ -453,9 +458,7 @@ export class Game {
 
   private handleChatCommand(command: string): void {
     if (command.toLowerCase() !== 'admin2011') return;
-    this.controller.flyMode = !this.controller.flyMode;
-    this.controller.vel.set(0, 0, 0);
-    this.controller.stunTimer = 0;
+    this.input.clear();
     this.controller.carriedBy = null;
     this.struggleClicks = 0;
     this.hud.hideStruggle();
@@ -464,15 +467,24 @@ export class Game {
       this.vehicle.exit('me');
     }
     if (this.controller.flyMode) {
-      this.hud.toast('ADMIN FLY: WASD look-steer, Space up, Ctrl/C down, Shift faster. No fall reset.', 5200);
+      this.controller.leaveFly(this.world);
+      this.pendingFlyLand = true;
+      this.afterFlyRefY = this.controller.pos.y;
+      this.input.clear();
+      this.cam.snap(this.controller.pos);
+      this.hud.toast('Admin fly off. Stay here and climb normally.', 3200);
     } else {
-      this.hud.toast('Admin fly off. Gravity is back.', 2600);
+      this.controller.flyMode = true;
+      this.controller.vel.set(0, 0, 0);
+      this.controller.stunTimer = 0;
+      this.pendingFlyLand = false;
+      this.hud.toast('ADMIN FLY: WASD look-steer, Space up, Ctrl/C down, Shift faster. No fall reset.', 5200);
     }
   }
 
   private checkHazardBalls(): void {
     const p = this.controller;
-    if (p.flyMode) return;
+    if (p.flyMode || p.moveLock > 0) return;
     if (p.stunTimer > 0) return;
     if (this.vehicle.seatOf('me') >= 0) return;
     const py = p.pos.y + p.height * 0.4;
@@ -496,9 +508,18 @@ export class Game {
 
   private checkFall(): void {
     if (this.controller.flyMode) return;
+    if (this.pendingFlyLand) {
+      if (this.controller.onGround) {
+        this.pendingFlyLand = false;
+        this.afterFlyRefY = this.controller.pos.y;
+      }
+      return;
+    }
     if (this.vehicle.seatOf('me') >= 0) return;
     const cpY = this.currentCheckpoint >= 0 ? this.world.checkpoints[this.currentCheckpoint].pos.y : 0;
-    if (this.controller.pos.y < cpY - 45 || this.controller.pos.y < -22) {
+    const refY = this.afterFlyRefY ?? cpY;
+    if (this.controller.pos.y < refY - 45 || this.controller.pos.y < -22) {
+      this.afterFlyRefY = null;
       this.controller.teleport(this.respawnPoint());
       this.hud.fallToast();
     }
@@ -631,9 +652,11 @@ export class Game {
     this.world.update(dt);
     this.punchCooldown = Math.max(0, this.punchCooldown - dt);
 
-    if (this.input.consume('KeyE')) this.doEnterOrPunch();
-    if (this.input.consume('KeyQ')) this.doPickupOrDrop();
-    if (this.input.consume('KeyB')) this.doThrow();
+    if (this.controller.moveLock <= 0) {
+      if (this.input.consume('KeyE')) this.doEnterOrPunch();
+      if (this.input.consume('KeyQ')) this.doPickupOrDrop();
+      if (this.input.consume('KeyB')) this.doThrow();
+    }
 
     this.controller.capturePrevPos();
     const mySeat = this.controller.flyMode ? -1 : this.vehicle.seatOf('me');

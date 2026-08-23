@@ -44,6 +44,8 @@ export class PlayerController {
   endingMode = false;
   /** Local admin fly: no gravity, no collision, no travel cap. */
   flyMode = false;
+  /** After fly-off, skip WASD/jump/rotors so leftover keys cannot launch you. */
+  moveLock = 0;
 
   radius = 0.38;
   standHeight = 1.7;
@@ -97,6 +99,8 @@ export class PlayerController {
       return;
     }
 
+    if (this.moveLock > 0) this.moveLock -= dt;
+
     if (this.endingMode) {
       // Zero-g farewell float
       this.vel.y = Math.min(this.vel.y + 2.4 * dt, 1.6);
@@ -106,9 +110,9 @@ export class PlayerController {
     }
 
     if (this.stunTimer > 0) this.stunTimer -= dt;
-    const stunned = this.stunTimer > 0;
+    const stunned = this.stunTimer > 0 || this.moveLock > 0;
 
-    if (input.consume('KeyR')) this.crawling = !this.crawling;
+    if (!stunned && input.consume('KeyR')) this.crawling = !this.crawling;
 
     // ----- movement input -----
     const inSpace = this.pos.y > SPACE_START_Y;
@@ -174,6 +178,7 @@ export class PlayerController {
     this.stickToSlopes(world);
 
     // ----- rotor bars knock you flying -----
+    if (this.moveLock > 0) return;
     for (const r of world.rotors) {
       const dy = (this.pos.y + this.height * 0.4) - r.barY;
       if (Math.abs(dy) > 1.1) continue;
@@ -224,6 +229,26 @@ export class PlayerController {
     if (move.lengthSq() > 0) {
       this.facing = Math.atan2(this.tmpF.x, this.tmpF.z);
     }
+  }
+
+  /** Leave fly at the current spot. Snap onto a nearby pad if one is right here. */
+  leaveFly(world: WorldMap): void {
+    this.flyMode = false;
+    this.vel.set(0, 0, 0);
+    this.stunTimer = 0;
+    this.crawling = false;
+    this.onSlope = false;
+    this.moveLock = 0.35;
+    const hint = this.pos.y;
+    const top = world.nearestStandY(this.pos.x, this.pos.z, hint);
+    if (top !== null && top - hint <= 1.2 && hint - top <= 3.5) {
+      this.pos.y = top;
+      this.onGround = true;
+    } else {
+      this.onGround = false;
+      this.groundCollider = null;
+    }
+    this.prevPos.copy(this.pos);
   }
 
   private moveAxis(world: WorldMap, axis: 'x' | 'y' | 'z', amount: number, landingCheck = false): void {

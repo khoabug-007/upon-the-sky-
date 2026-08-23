@@ -32,4 +32,11 @@ export class Input {
 
   /** Call at the end of each frame to drop unconsumed presses. */
   endFrame(): void { this.pressed.clear(); }
+
+  /** Drop held keys so leaving admin fly cannot reuse leftover WASD/Space. */
+  clear(): void {
+    this.keys.clear();
+    this.pressed.clear();
+    this.mouseLeft = false;
+  }
 }
