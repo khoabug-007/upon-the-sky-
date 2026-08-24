@@ -59,6 +59,13 @@ interface WarpWatch {
   mats: THREE.MeshStandardMaterial[];
 }
 
+interface SpaceFloater {
+  group: THREE.Group;
+  base: THREE.Vector3;
+  phase: number;
+  spin: number;
+}
+
 export interface Prop {
   id: number;
   mesh: THREE.Mesh;
@@ -118,7 +125,9 @@ const hopCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
   prevZ + prevAlong / 2 + JUMP_GAP + nextAlong / 2;
 const joinCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
   prevZ + prevAlong / 2 + nextAlong / 2;
-const BG_WATCHES = 200;
+const BG_WATCHES = 144;
+/** Typical pocket-watch world size used to scale floating craft. */
+const WATCH_WORLD = 6.4;
 const BG_RIFTS = 32;
 
 const mat = (color: number, rough = 0.85) => lookMaterial(color, rough);
@@ -210,6 +219,7 @@ export class WorldMap {
   private warpWatches: WarpWatch[] = [];
   private errorRifts: THREE.Mesh[] = [];
   private instancedWatchMats: THREE.MeshStandardMaterial[] = [];
+  private spaceFloaters: SpaceFloater[] = [];
   private errorWorldOrigin = new THREE.Vector3();
   private riftSpriteMat: THREE.ShaderMaterial | null = null;
   private riftDoorMatA: THREE.MeshStandardMaterial | null = null;
@@ -1042,7 +1052,9 @@ export class WorldMap {
     if (!spine.length) return;
     this.addErrorBandRifts(spine);
     const watchSpine = this.collectZigzagWatchSpine();
-    this.addErrorBandWatches(watchSpine.length ? watchSpine : spine);
+    const path = watchSpine.length ? watchSpine : spine;
+    this.addErrorBandWatches(path);
+    this.addSpaceFleet(path);
   }
 
   private addErrorBandRifts(spine: THREE.Vector3[]): void {
@@ -1058,6 +1070,70 @@ export class WorldMap {
       const pz = p.z + side.z * rad * sign + dir.z * ((i % 5) - 2) * 3;
       const py = p.y + 5 + (i % 7) * 3.1;
       this.placeErrorRift(px, py, pz, p.x, p.y + 3, p.z, i + 14);
+    }
+  }
+
+  private addSpaceFleet(spine: THREE.Vector3[]): void {
+    const craft: Array<{ url: string; size: number }> = [
+      { url: '/assets/space-ship-shuttle.glb', size: WATCH_WORLD * 2 },
+      { url: '/assets/space-ship-dragon.glb', size: WATCH_WORLD * 2 },
+      { url: '/assets/space-ship-soyuz.glb', size: WATCH_WORLD * 2 },
+      { url: '/assets/space-sat-comm.glb', size: WATCH_WORLD },
+      { url: '/assets/space-sat-gps.glb', size: WATCH_WORLD },
+      { url: '/assets/space-sat-telescope.glb', size: WATCH_WORLD },
+      { url: '/assets/space-sat-weather.glb', size: WATCH_WORLD },
+      { url: '/assets/space-sat-cubesat.glb', size: WATCH_WORLD }
+    ];
+    const ring = [
+      { s: 1, u: 0.15 },
+      { s: -1, u: 0.35 },
+      { s: 0.2, u: 1 },
+      { s: -0.15, u: -1 },
+      { s: 0.85, u: 0.55 },
+      { s: -0.85, u: -0.4 },
+      { s: 0.45, u: 0.9 },
+      { s: -0.55, u: 0.75 }
+    ];
+    const n = craft.length;
+    for (let i = 0; i < n; i++) {
+      const spec = craft[i]!;
+      const t = n <= 1 ? 0.5 : (i + 0.5) / n;
+      const { p, dir } = this.spineSample(spine, t);
+      const side = new THREE.Vector3(-dir.z, 0, dir.x);
+      if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
+      else side.normalize();
+      const slot = ring[i]!;
+      const rad = 22 + (i % 3) * 5;
+      const px = p.x + side.x * rad * slot.s + dir.x * ((i % 3) - 1) * 3;
+      const pz = p.z + side.z * rad * slot.s + dir.z * ((i % 3) - 1) * 3;
+      const py = p.y + rad * slot.u * 0.85;
+      const holder = new THREE.Group();
+      holder.position.set(px, py, pz);
+      this.scene.add(holder);
+      this.spaceFloaters.push({
+        group: holder,
+        base: holder.position.clone(),
+        phase: i * 1.31,
+        spin: 0.08 + (i % 4) * 0.03
+      });
+      this.loadCraft(spec.url, (src) => {
+        const root = src.clone(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3());
+        const longest = Math.max(size.x, size.y, size.z, 0.01);
+        root.scale.multiplyScalar(spec.size / longest);
+        box.setFromObject(root);
+        const c = box.getCenter(new THREE.Vector3());
+        root.position.sub(c);
+        root.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (m.isMesh) {
+            m.castShadow = true;
+            m.receiveShadow = true;
+          }
+        });
+        holder.add(root);
+      });
     }
   }
 
@@ -1136,19 +1212,27 @@ export class WorldMap {
       this.scene.add(part.mesh);
     }
 
+    const ring = [
+      { s: 1, u: 0 },
+      { s: -1, u: 0 },
+      { s: 0, u: 1 },
+      { s: 0, u: -1 },
+      { s: 0.72, u: 0.72 },
+      { s: -0.72, u: -0.72 }
+    ];
     for (let i = 0; i < n; i++) {
       const t = n <= 1 ? 0 : i / (n - 1);
       const { p, dir } = this.spineSample(spine, t);
       const side = new THREE.Vector3(-dir.z, 0, dir.x);
       if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
       else side.normalize();
-      const sign = i % 2 === 0 ? 1 : -1;
-      const rad = 11 + (i % 6) * 1.6;
-      const alongJitter = ((i % 5) - 2) * 1.4;
-      const px = p.x + side.x * rad * sign + dir.x * alongJitter;
-      const pz = p.z + side.z * rad * sign + dir.z * alongJitter;
-      const py = p.y + 5 + (i % 5) * 2.1;
-      const scale = 4.2 + (i % 9) * 0.55;
+      const slot = ring[i % ring.length]!;
+      const rad = 10.5 + Math.floor(i / ring.length) % 3 * 2.4;
+      const alongJitter = ((i % 7) - 3) * 0.9;
+      const px = p.x + side.x * rad * slot.s + dir.x * alongJitter;
+      const pz = p.z + side.z * rad * slot.s + dir.z * alongJitter;
+      const py = p.y + rad * slot.u * 0.9;
+      const scale = 4.0 + (i % 7) * 0.42;
       const hour = i % 12;
       const minute = (Math.floor(i / 12) * 7) % 60;
       const hourA = ((hour % 12) + minute / 60) * (Math.PI * 2 / 12);
@@ -1232,6 +1316,12 @@ export class WorldMap {
         const sh = m.userData.shader as { uniforms: { uTime: { value: number } } } | undefined;
         if (sh) sh.uniforms.uTime.value = t;
       }
+    }
+    for (const f of this.spaceFloaters) {
+      const t = this.time + f.phase;
+      f.group.position.y = f.base.y + Math.sin(t * 0.35) * 1.4;
+      f.group.rotation.y += f.spin * dt;
+      f.group.rotation.z = Math.sin(t * 0.22) * 0.12;
     }
   }
 
