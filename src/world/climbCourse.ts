@@ -12,8 +12,7 @@ const TRAMP_BOUNCE_VEL = 17.5;
 const GRAVITY_MAG = 24;
 const SPACE_GRAVITY_MAG = 7.5;
 const REBOUND_R = 1.08;
-const REBOUND_ROWS = 5;
-const REBOUND_COLS = 10;
+const REBOUND_COUNT = 50;
 /** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
 const WALK_HOP_GAP = 2.2;
 const PAD = 3.1;
@@ -310,14 +309,15 @@ function reverseSpin(
   return { x: ex, y, z: ez };
 }
 
-/** Levels 60–67: 5×10 pink rebounders, spaced at a walking bounce so each pad reaches the next. */
+/** Levels 60–67: 50 rebounders climb in a zigzag, each bounce just reaching the next pad. */
 function reboundRows(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number
 ): { x: number; y: number; z: number } {
   const gap = bounceStep(y);
-  const rowPitch = REBOUND_R * 2 + WALK_HOP_GAP + 0.35;
-  const rise = 0.42;
+  const alongStep = gap * 0.52;
+  const sideAmp = Math.sqrt(Math.max(0.01, gap * gap - alongStep * alongStep)) / 2;
+  const rise = y > SPACE_BAND_Y ? 2.35 : 1.35;
   const startAlong = 6;
   const startHalf = 2.6;
   const { w: sw, d: sd } = padDimsAlongTravel(dx, dz, 5.2, 5.2);
@@ -325,33 +325,32 @@ function reboundRows(
   const sz = z + dz * startAlong;
   api.addBox(sw, 1, sd, sx, y, sz, color, { name: 'Level 60' });
   api.addSign(
-    ['Walk onto a pink pad.', 'A bounce carries you to the next.'],
+    ['Zigzag up the pink pads.', 'Walk into each bounce.'],
     sx - dz * 5.5, y + 3.2, sz + dx * 5.5, 0.75
   );
   flagAt(api, sx, y + 0.5, sz, 'Level 60', true);
 
   const firstAlong = startAlong + startHalf + WALK_HOP_GAP + REBOUND_R;
-  let n = 0;
-  for (let row = 0; row < REBOUND_ROWS; row++) {
-    const side = sideOf(dx, dz, (row - (REBOUND_ROWS - 1) / 2) * rowPitch);
-    for (let col = 0; col < REBOUND_COLS; col++) {
-      n += 1;
-      const along = firstAlong + col * gap;
-      const py = y + col * rise;
-      const px = ox + dx * along + side.x;
-      const pz = z + dz * along + side.z;
-      api.addTrampoline(px, py, pz, REBOUND_R, `Rebounder ${n}`);
-    }
+  const spot = (i: number) => {
+    const along = firstAlong + i * alongStep;
+    const side = sideOf(dx, dz, (i % 2 === 0 ? -sideAmp : sideAmp));
+    return {
+      x: ox + dx * along + side.x,
+      y: y + i * rise,
+      z: z + dz * along + side.z
+    };
+  };
+
+  for (let i = 0; i < REBOUND_COUNT; i++) {
+    const p = spot(i);
+    api.addTrampoline(p.x, p.y, p.z, REBOUND_R, `Rebounder ${i + 1}`);
   }
 
-  const endAlong = firstAlong + REBOUND_COLS * gap;
-  const endY = y + (REBOUND_COLS - 1) * rise;
-  const ex = ox + dx * endAlong;
-  const ez = z + dz * endAlong;
+  const end = spot(REBOUND_COUNT);
   const { w: ew, d: ed } = padDimsAlongTravel(dx, dz, 6.2, 6.2);
-  api.addBox(ew, 1, ed, ex, endY, ez, color, { name: 'Level 67' });
-  flagAt(api, ex, endY + 0.5, ez, 'Level 67', true);
-  return { x: ex, y: endY, z: ez };
+  api.addBox(ew, 1, ed, end.x, end.y, end.z, color, { name: 'Level 67' });
+  flagAt(api, end.x, end.y + 0.5, end.z, 'Level 67', true);
+  return { x: end.x, y: end.y, z: end.z };
 }
 
 function placeComingSoon(
