@@ -1009,11 +1009,40 @@ export class WorldMap {
     return { p, dir };
   }
 
+  /** Level 60 pad, rebounders in order, Level 67 pad — the zigzag climb. */
+  private collectZigzagWatchSpine(): THREE.Vector3[] {
+    const center = (c: BoxCollider) => new THREE.Vector3(
+      (c.min.x + c.max.x) * 0.5, c.max.y, (c.min.z + c.max.z) * 0.5
+    );
+    const named = (label: string) => {
+      const box = this.colliders.find((c) => c.name === label);
+      if (box) return center(box);
+      const cp = this.checkpoints.find((c) => c.label === label);
+      return cp ? cp.pos.clone() : null;
+    };
+    const start = named('Level 60');
+    const end = named('Level 67');
+    const pads = this.colliders
+      .map((c) => {
+        const m = /^(?:Rebounder|Trampoline) (\d+)$/.exec(c.name ?? '');
+        return m ? { i: Number(m[1]), p: center(c) } : null;
+      })
+      .filter((x): x is { i: number; p: THREE.Vector3 } => !!x)
+      .sort((a, b) => a.i - b.i)
+      .map((x) => x.p);
+    const pts: THREE.Vector3[] = [];
+    if (start) pts.push(start);
+    pts.push(...pads);
+    if (end) pts.push(end);
+    return pts;
+  }
+
   private addErrorBandDecor(): void {
     const spine = this.collectErrorBandSpine();
     if (!spine.length) return;
     this.addErrorBandRifts(spine);
-    this.addErrorBandWatches(spine);
+    const watchSpine = this.collectZigzagWatchSpine();
+    this.addErrorBandWatches(watchSpine.length ? watchSpine : spine);
   }
 
   private addErrorBandRifts(spine: THREE.Vector3[]): void {
@@ -1108,18 +1137,18 @@ export class WorldMap {
     }
 
     for (let i = 0; i < n; i++) {
-      const t = ((i * 0.61803398875) % 1);
+      const t = n <= 1 ? 0 : i / (n - 1);
       const { p, dir } = this.spineSample(spine, t);
       const side = new THREE.Vector3(-dir.z, 0, dir.x);
       if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
       else side.normalize();
       const sign = i % 2 === 0 ? 1 : -1;
-      const rad = 18 + (i * 29 % 73);
-      const alongJitter = ((i * 13) % 17) - 8;
+      const rad = 11 + (i % 6) * 1.6;
+      const alongJitter = ((i % 5) - 2) * 1.4;
       const px = p.x + side.x * rad * sign + dir.x * alongJitter;
       const pz = p.z + side.z * rad * sign + dir.z * alongJitter;
-      const py = p.y + 8 + (i * 19 % 33);
-      const scale = 5 + (i * 13 % 130) / 10;
+      const py = p.y + 5 + (i % 5) * 2.1;
+      const scale = 4.2 + (i % 9) * 0.55;
       const hour = i % 12;
       const minute = (Math.floor(i / 12) * 7) % 60;
       const hourA = ((hour % 12) + minute / 60) * (Math.PI * 2 / 12);
