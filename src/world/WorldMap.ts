@@ -126,6 +126,8 @@ const hopCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
 const joinCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
   prevZ + prevAlong / 2 + nextAlong / 2;
 const BG_WATCHES = 144;
+const WATCHES_40_60 = 50;
+const WATCHES_60_67 = BG_WATCHES - WATCHES_40_60;
 /** Typical pocket-watch world size used to scale floating craft. */
 const WATCH_WORLD = 6.4;
 const BG_RIFTS = 32;
@@ -1047,14 +1049,45 @@ export class WorldMap {
     return pts;
   }
 
+  /** Convoy road from ~Level 40 through Error World pads to Level 60. */
+  private collectWatchSpine40to60(): THREE.Vector3[] {
+    const center = (c: BoxCollider) => new THREE.Vector3(
+      (c.min.x + c.max.x) * 0.5, c.max.y, (c.min.z + c.max.z) * 0.5
+    );
+    const pts: THREE.Vector3[] = [];
+    const roads = this.colliders.filter((c) => c.name === 'Convoy Road');
+    if (roads.length) {
+      const start = Math.floor(roads.length * (40 - 17) / (50 - 17));
+      for (let i = Math.max(0, start); i < roads.length; i++) {
+        pts.push(center(roads[i]!));
+      }
+    } else {
+      const cloud = this.checkpoints.find((c) => c.label === 'Cloud Nine');
+      if (cloud) pts.push(cloud.pos.clone());
+    }
+    for (let lv = 50; lv <= 60; lv++) {
+      const name = `Level ${lv}`;
+      const box = this.colliders.find((c) => c.name === name);
+      if (box) {
+        pts.push(center(box));
+        continue;
+      }
+      const cp = this.checkpoints.find((c) => c.label === name);
+      if (cp) pts.push(cp.pos.clone());
+    }
+    return pts;
+  }
+
   private addErrorBandDecor(): void {
     const spine = this.collectErrorBandSpine();
     if (!spine.length) return;
     this.addErrorBandRifts(spine);
-    const watchSpine = this.collectZigzagWatchSpine();
-    const path = watchSpine.length ? watchSpine : spine;
-    this.addErrorBandWatches(path);
-    this.addSpaceFleet(path);
+    const early = this.collectWatchSpine40to60();
+    const zig = this.collectZigzagWatchSpine();
+    if (early.length) this.addErrorBandWatches(early, WATCHES_40_60);
+    const late = zig.length ? zig : spine;
+    this.addErrorBandWatches(late, WATCHES_60_67);
+    this.addSpaceFleet(late);
   }
 
   private addErrorBandRifts(spine: THREE.Vector3[]): void {
@@ -1137,8 +1170,8 @@ export class WorldMap {
     }
   }
 
-  private addErrorBandWatches(spine: THREE.Vector3[]): void {
-    const n = BG_WATCHES;
+  private addErrorBandWatches(spine: THREE.Vector3[], n: number): void {
+    if (n < 1 || !spine.length) return;
     const phases = new Float32Array(n);
     for (let i = 0; i < n; i++) phases[i] = i * 1.17;
     const withPhase = (geo: THREE.BufferGeometry) => {
