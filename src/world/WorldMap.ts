@@ -425,17 +425,31 @@ export class WorldMap {
   }
 
   private addTrampoline(x: number, y: number, z: number, r = 1.6, name = 'Trampoline'): void {
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.1, 0.45, 24), mat(0x777788));
-    base.position.set(x, y + 0.22, z);
-    base.castShadow = true; base.receiveShadow = true;
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.9, r * 0.9, 0.14, 24),
-      new THREE.MeshStandardMaterial({ color: 0xff4f9a, roughness: 0.4, emissive: 0x550022 }));
-    pad.position.set(x, y + 0.52, z);
+    const charcoal = mat(0x3a3a42, 0.55);
+    const ridges = [1.18, 1.10, 1.03];
+    for (let i = 0; i < ridges.length; i++) {
+      const rr = r * ridges[i]!;
+      const h = 0.11;
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(rr, rr * 1.04, h, 28), charcoal);
+      ring.position.set(x, y + 0.06 + i * 0.11, z);
+      ring.castShadow = true;
+      ring.receiveShadow = true;
+      this.scene.add(ring);
+    }
+    const pad = new THREE.Mesh(
+      new THREE.CylinderGeometry(r * 0.92, r * 0.92, 0.1, 28),
+      new THREE.MeshStandardMaterial({
+        color: 0xff2d8a, roughness: 0.38, metalness: 0.04, emissive: 0x5a0028, emissiveIntensity: 0.18
+      })
+    );
+    pad.position.set(x, y + 0.44, z);
     pad.name = name;
-    this.scene.add(base, pad);
+    pad.castShadow = true;
+    pad.receiveShadow = true;
+    this.scene.add(pad);
     this.colliders.push({
       min: new THREE.Vector3(x - r * 0.95, y, z - r * 0.95),
-      max: new THREE.Vector3(x + r * 0.95, y + 0.6, z + r * 0.95),
+      max: new THREE.Vector3(x + r * 0.95, y + 0.5, z + r * 0.95),
       bouncy: true,
       name
     });

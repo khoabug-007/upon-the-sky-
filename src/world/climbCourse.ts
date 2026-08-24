@@ -89,6 +89,7 @@ export function appendClimbLevels(
   let dz = 1;
   let placed = already;
   let wait = 0;
+  let reboundBudget = 50;
   const extra = Math.max(0, TARGET_LEVELS - already);
 
   for (let i = 0; i < extra; i++) {
@@ -122,10 +123,13 @@ export function appendClimbLevels(
       const lateFlag = next === 54 || next === 60 || next === 67;
       if (next <= 54) {
         ({ x, y, z } = backHop(api, x, y, z, dx, dz, lateColor, label, lateFlag));
-      } else if (next <= 60) {
+      } else if (next <= 59) {
         ({ x, y, z } = reverseSpin(api, x, y, z, dx, dz, lateColor, label, lateFlag));
       } else {
-        ({ x, y, z } = spiralUp(api, x, y, z, dx, dz, lateColor, label, next, lateFlag));
+        const leftLevels = 68 - next;
+        const n = next === 67 ? reboundBudget : Math.max(1, Math.round(reboundBudget / leftLevels));
+        reboundBudget -= n;
+        ({ x, y, z } = reboundSpiral(api, x, y, z, dx, dz, lateColor, label, next, lateFlag, n));
       }
       placed = next;
       continue;
@@ -269,7 +273,7 @@ function backHop(
   return { x: ex, y: py, z: ez };
 }
 
-/** Levels 55–60: spinning bars turn the other way. */
+/** Levels 55–59: spinning bars turn the other way. */
 function reverseSpin(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number, label: string, flag: boolean
@@ -294,10 +298,11 @@ function reverseSpin(
   return { x: ex, y, z: ez };
 }
 
-/** Levels 61–67: pads and rotors climb a rising spiral. */
-function spiralUp(
+/** Levels 60–67: no spinning bars; pink rebounders launch you up the spiral. */
+function reboundSpiral(
   api: ClimbApi, ox: number, y: number, z: number,
-  dx: number, dz: number, color: number, label: string, seed: number, flag: boolean
+  dx: number, dz: number, color: number, label: string, seed: number, flag: boolean,
+  rebounders: number
 ): { x: number; y: number; z: number } {
   const pads = runCount(5);
   const rise = 1.48;
@@ -306,6 +311,7 @@ function spiralUp(
   const padAlong = padAcross * PATH_LEN;
   const step = padAlong + WALK_HOP_GAP;
   const dAng = 0.7;
+  const spots: Array<{ x: number; y: number; z: number }> = [];
   let lastX = ox, lastY = y, lastZ = z;
   for (let i = 0; i < pads; i++) {
     const ang = seed * 0.35 + i * dAng;
@@ -314,9 +320,31 @@ function spiralUp(
     const py = y + i * rise;
     const { w, d } = padDimsAlongTravel(dx, dz, padAcross, padAlong);
     api.addBox(w, 0.7, d, px, py, pz, color, { name: `${label} Coil ${i + 1}` });
-    api.addRotor(px, py + 1.32, pz, 2.5, 1.2 + i * 0.1, 0xe67e22, ang);
+    spots.push({ x: px, y: py, z: pz });
     lastX = px; lastY = py; lastZ = pz;
   }
+
+  const n = Math.max(0, rebounders);
+  for (let i = 0; i < n; i++) {
+    const u = n === 1 ? 0 : (i / n) * Math.max(0, spots.length - 1.08);
+    const i0 = Math.min(spots.length - 1, Math.floor(u));
+    const i1 = Math.min(spots.length - 1, i0 + 1);
+    const f = u - i0;
+    const a = spots[i0]!;
+    const b = spots[i1]!;
+    const px = a.x + (b.x - a.x) * f;
+    const py = a.y + (b.y - a.y) * f;
+    const pz = a.z + (b.z - a.z) * f;
+    const side = sideOf(dx, dz, i % 2 ? 1.15 : -1.15);
+    api.addTrampoline(
+      px + side.x,
+      py + 0.02,
+      pz + side.z,
+      1.08,
+      `${label} Rebounder ${i + 1}`
+    );
+  }
+
   flagAt(api, lastX, lastY + 0.5, lastZ, label, flag);
   return { x: lastX, y: lastY, z: lastZ };
 }
