@@ -187,7 +187,7 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const cx = R;
   const cz = zStart;
   api.addOrientedSlab(roadW, slabH, 16, 0, y, z + parkD / 2 + 7, 0, 0x3a3a36, 'Convoy Road');
-  api.addVehicleSpawn(0, y + 0.5, z + 1.2, Math.PI);
+  api.addVehicleSpawn(0, y + 0.5, z + 1.2, 0);
 
   let lastX = 0, lastY = y, lastZ = zStart, lastTx = 0, lastTz = 1;
   for (let i = 0; i < steps; i++) {

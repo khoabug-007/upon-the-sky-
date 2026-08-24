@@ -298,6 +298,8 @@ export class Game {
         return;
       }
       this.vehicle.attachRider(this.character.group, seat);
+      this.cam.yaw = this.vehicle.heading;
+      this.cam.pitch = 0.28;
       this.cam.dist = seat === 0 ? 11 : 8.5;
       this.hud.toast(seat === 0 ? 'Sit tight. WASD steers the truck, E to hop out.' : `Seated. E to hop out.`, 2200);
       return;
@@ -663,11 +665,22 @@ export class Game {
     if (mySeat >= 0) {
       if (mySeat === 0) this.vehicle.updateDrive(dt, this.input, this.world);
       this.controller.pos.copy(this.vehicle.seatWorld(mySeat));
-      this.controller.facing = this.vehicle.heading;
-      this.controller.vel.set(0, 0, 0);
-      this.controller.onGround = true;
+      if (this.vehicle.fellOff()) {
+        this.vehicle.detachRider(this.character.group, this.scene);
+        this.vehicle.exit('me');
+        this.character.group.position.copy(this.controller.pos);
+        this.character.group.rotation.y = this.controller.facing;
+        this.cam.dist = 6.5;
+        this.vehicle.respawn();
+        this.hud.toast('The truck went over. A new one is waiting at the motor pool.', 2800);
+      } else {
+        this.controller.facing = this.vehicle.heading;
+        this.controller.vel.set(0, 0, 0);
+        this.controller.onGround = true;
+      }
     } else {
       this.controller.update(dt, this.input, this.cam, this.world);
+      if (this.vehicle.fellOff()) this.vehicle.respawn();
     }
     this.checkHazardBalls();
 

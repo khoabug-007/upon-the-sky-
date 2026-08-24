@@ -5,14 +5,14 @@ import type { WorldMap } from '../world/WorldMap';
 
 export type RiderId = 'me' | string;
 
-/** Seats inside the cab / troop bay. Nose is local -Z after the mesh is turned lengthwise. */
+/** Seats in the cab / bay. After the mesh yaw, the windshield is local +Z. */
 const SEAT_LOCAL: THREE.Vector3[] = [
-  new THREE.Vector3(0.28, 1.06, -1.85),
-  new THREE.Vector3(-0.28, 1.06, -1.85),
-  new THREE.Vector3(0.28, 1.04, -0.55),
-  new THREE.Vector3(-0.28, 1.04, -0.55),
-  new THREE.Vector3(0.28, 1.04, 0.65),
-  new THREE.Vector3(-0.28, 1.04, 0.65)
+  new THREE.Vector3(-0.28, 1.06, 1.85),
+  new THREE.Vector3(0.28, 1.06, 1.85),
+  new THREE.Vector3(-0.28, 1.04, 0.55),
+  new THREE.Vector3(0.28, 1.04, 0.55),
+  new THREE.Vector3(-0.28, 1.04, -0.65),
+  new THREE.Vector3(0.28, 1.04, -0.65)
 ];
 const WHEEL_R = 0.42;
 
@@ -31,7 +31,7 @@ const MAX_REV = 5.5;
 /** 6-seat troop truck with visible chairs and car-like steering. */
 export class Transport {
   readonly group = new THREE.Group();
-  heading = Math.PI;
+  heading = 0;
   speed = 0;
   readonly occupants: Array<RiderId | null> = [null, null, null, null, null, null];
   readonly half = new THREE.Vector3(1.15, 1.1, 3.05);
@@ -39,16 +39,21 @@ export class Transport {
   private readonly seats: THREE.Group[] = [];
   private readonly wheels: THREE.Object3D[] = [];
   private pitch = 0;
+  private lastFloorY = 0;
+  private readonly home = { pos: new THREE.Vector3(0, -80, 0), heading: 0 };
   private readonly _fwd = new THREE.Vector3();
   private readonly _seat = new THREE.Vector3();
   private readonly _side = new THREE.Vector3();
 
   constructor(scene: THREE.Scene, spawn: { pos: THREE.Vector3; heading: number } | null) {
     if (spawn) {
+      this.home.pos.copy(spawn.pos);
+      this.home.heading = spawn.heading;
       this.group.position.copy(spawn.pos);
       this.heading = spawn.heading;
+      this.lastFloorY = spawn.pos.y;
     } else {
-      this.group.position.set(0, -80, 0);
+      this.group.position.copy(this.home.pos);
     }
     this.group.rotation.order = 'YXZ';
     this.group.rotation.y = this.heading;
@@ -84,8 +89,8 @@ export class Transport {
   attachRider(rider: THREE.Object3D, seatIndex: number): void {
     const seat = this.seats[seatIndex] ?? this.seats[0];
     seat.attach(rider);
-    rider.position.set(0, 0.02, 0.04);
-    rider.rotation.set(0, Math.PI, 0);
+    rider.position.set(0, 0.02, 0.08);
+    rider.rotation.set(0, 0, 0);
   }
 
   detachRider(rider: THREE.Object3D, scene: THREE.Scene): void {
@@ -97,7 +102,7 @@ export class Transport {
     if (i < 0) return null;
     this.occupants[i] = null;
     if (!this.occupants[0]) this.speed *= 0.25;
-    const side = i % 2 === 0 ? 2.6 : -2.6;
+    const side = i % 2 === 0 ? -2.6 : 2.6;
     this._side.set(side, 0.15, 0).applyEuler(this.group.rotation);
     return this.group.position.clone().add(this._side);
   }
@@ -109,7 +114,7 @@ export class Transport {
   }
 
   updateDrive(dt: number, input: Input, world: WorldMap): void {
-    const want = (input.down('KeyA') ? -MAX_STEER : 0) + (input.down('KeyD') ? MAX_STEER : 0);
+    const want = (input.down('KeyA') ? MAX_STEER : 0) + (input.down('KeyD') ? -MAX_STEER : 0);
     this.steer += (want - this.steer) * Math.min(1, 10 * dt);
 
     const throttle = (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
@@ -124,7 +129,7 @@ export class Transport {
       this.heading += (this.speed / WHEELBASE) * Math.tan(this.steer) * dt;
     }
 
-    this._fwd.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
+    this._fwd.set(Math.sin(this.heading), 0, Math.cos(this.heading));
     const nx = this.group.position.x + this._fwd.x * this.speed * dt;
     const nz = this.group.position.z + this._fwd.z * this.speed * dt;
     if (this.blocked(nx, nz, world)) {
@@ -168,8 +173,34 @@ export class Transport {
     const top = this.floorY(x, z, world, hint)
       ?? this.floorY(x + this._fwd.x * 1.6, z + this._fwd.z * 1.6, world, hint)
       ?? this.floorY(x - this._fwd.x * 1.6, z - this._fwd.z * 1.6, world, hint);
-    if (top !== null) this.group.position.y = top;
-    else this.group.position.y -= 22 * dt;
+    if (top !== null) {
+      this.lastFloorY = top;
+      this.group.position.y = top;
+    } else {
+      this.group.position.y -= 22 * dt;
+    }
+  }
+
+  /** True once the truck has dropped off the road far enough to scrap. */
+  fellOff(): boolean {
+    return this.group.position.y < this.lastFloorY - 4
+      || this.group.position.y < this.home.pos.y - 10
+      || this.group.position.y < -20;
+  }
+
+  /** Vanish the fallen truck and put a fresh one on the motor-pool pad. */
+  respawn(): void {
+    this.occupants.fill(null);
+    this.speed = 0;
+    this.steer = 0;
+    this.pitch = 0;
+    this.heading = this.home.heading;
+    this.lastFloorY = this.home.pos.y;
+    this.group.position.copy(this.home.pos);
+    this.group.rotation.set(0, this.heading, 0);
+    for (const w of this.wheels) {
+      w.rotation.y = 0;
+    }
   }
 
   private floorY(x: number, z: number, world: WorldMap, hint = this.group.position.y): number | null {
@@ -209,7 +240,7 @@ export class Transport {
       g.position.copy(SEAT_LOCAL[i]);
       const pad = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.36), cushion);
       const back = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.42, 0.07), cushion);
-      back.position.set(0, 0.22, -0.16);
+      back.position.set(0, 0.22, -0.18);
       g.add(pad, back);
       this.group.add(g);
       this.seats.push(g);
@@ -239,8 +270,8 @@ export class Transport {
       const size = box.getSize(new THREE.Vector3());
       const longest = Math.max(size.x, size.z, 0.01);
       root.scale.setScalar(6.4 / longest);
-      // Mesh is modeled along +X (cab at +X). Turn cab to local -Z so W drives lengthwise.
-      if (size.x >= size.z) root.rotation.y = Math.PI / 2;
+      // Mesh is modeled along +X (cab at +X). Yaw cab to local +Z so W drives toward the windshield.
+      if (size.x >= size.z) root.rotation.y = -Math.PI / 2;
       root.updateMatrixWorld(true);
       box.setFromObject(root);
       root.position.y -= box.min.y;
