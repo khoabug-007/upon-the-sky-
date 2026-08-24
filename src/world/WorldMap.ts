@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { gltfLoader } from '../render/gltf';
 import { appendClimbLevels, placeThrowGate, type ClimbApi, type ThrowSwitch } from './climbCourse';
 import { isLiftName, isSteelPad, lookMaterial } from './looks';
 
@@ -173,23 +173,9 @@ function makeErrorWorldSign(): THREE.Sprite {
 }
 
 function warpGold(hex: number): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({
+  return new THREE.MeshStandardMaterial({
     color: hex, metalness: 0.82, roughness: 0.28, emissive: hex, emissiveIntensity: 0.08
   });
-  m.userData.warped = true;
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = { value: 0 };
-    shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-      float w = 0.10 + 0.08 * sin(uTime * 0.8 + transformed.y * 4.0);
-      transformed.x += sin(transformed.y * 5.2 + uTime * 1.7) * w;
-      transformed.z += cos(transformed.x * 4.6 + uTime * 1.25) * w;
-      transformed.y += sin(transformed.z * 3.8 + uTime * 0.95) * (w * 0.7);`
-    );
-    m.userData.shader = shader;
-  };
-  return m;
 }
 
 export class WorldMap {
@@ -360,7 +346,7 @@ export class WorldMap {
       return;
     }
     WorldMap.craftWait.set(url, [place]);
-    new GLTFLoader().load(url, (gltf) => {
+    gltfLoader().load(url, (gltf) => {
       WorldMap.craftTpl.set(url, gltf.scene);
       for (const fn of WorldMap.craftWait.get(url) ?? []) fn(gltf.scene);
       WorldMap.craftWait.delete(url);
@@ -385,7 +371,10 @@ export class WorldMap {
       root.position.set(-c.x * sx, -c.y * sy, -c.z * sz);
       root.traverse((o) => {
         const m = o as THREE.Mesh;
-        if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+        if (m.isMesh) {
+          m.castShadow = false;
+          m.receiveShadow = false;
+        }
       });
       host.add(root);
     });
@@ -413,7 +402,10 @@ export class WorldMap {
       root.position.set(x, y + 0.05 - box.min.y, z);
       root.traverse((o) => {
         const m = o as THREE.Mesh;
-        if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+        if (m.isMesh) {
+          m.castShadow = false;
+          m.receiveShadow = false;
+        }
       });
       this.scene.add(root);
     };
@@ -422,7 +414,7 @@ export class WorldMap {
       place(cached);
       return cap;
     }
-    new GLTFLoader().load(url, (gltf) => {
+    gltfLoader().load(url, (gltf) => {
       WorldMap.craftTpl.set(url, gltf.scene);
       place(gltf.scene);
     }, undefined, () => {
@@ -947,25 +939,10 @@ export class WorldMap {
   }
 
   private instancedWarpGold(colorHex: number, emissiveHex: number): THREE.MeshStandardMaterial {
-    const m = new THREE.MeshStandardMaterial({
+    return new THREE.MeshStandardMaterial({
       color: colorHex, metalness: 0.82, roughness: 0.28,
       emissive: emissiveHex, emissiveIntensity: 0.08
     });
-    m.userData.warped = true;
-    m.onBeforeCompile = (shader) => {
-      shader.uniforms.uTime = { value: 0 };
-      shader.vertexShader = `uniform float uTime;\nattribute float aPhase;\n${shader.vertexShader}`.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        float t = uTime + aPhase;
-        float w = 0.10 + 0.08 * sin(t * 0.8 + transformed.y * 4.0);
-        transformed.x += sin(transformed.y * 5.2 + t * 1.7) * w;
-        transformed.z += cos(transformed.x * 4.6 + t * 1.25) * w;
-        transformed.y += sin(transformed.z * 3.8 + t * 0.95) * (w * 0.7);`
-      );
-      m.userData.shader = shader;
-    };
-    return m;
   }
 
   private collectErrorBandSpine(): THREE.Vector3[] {

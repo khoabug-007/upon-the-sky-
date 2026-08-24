@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { gltfLoader } from '../render/gltf';
 import type { Input } from './Input';
 import type { WorldMap } from '../world/WorldMap';
 
@@ -264,7 +264,7 @@ export class Transport {
   }
 
   private loadMesh(): void {
-    new GLTFLoader().load('/assets/military-transport.glb', (gltf) => {
+    gltfLoader().load('/assets/military-transport.glb', (gltf) => {
       const root = gltf.scene;
       this.splitModelWheels(root);
       const box = new THREE.Box3().setFromObject(root);

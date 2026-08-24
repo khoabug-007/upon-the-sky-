@@ -60,20 +60,19 @@ export class Game {
     private profile: Profile,
     joinInfo: JoinResult
   ) {
-    const dpr = Math.min(devicePixelRatio, 1.5);
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: dpr < 1.3,
+      antialias: false,
       powerPreference: 'high-performance',
       stencil: false
     });
-    this.renderer.setPixelRatio(dpr);
+    this.renderer.setPixelRatio(1);
     this.renderer.setSize(innerWidth, innerHeight, false);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
     window.addEventListener('resize', () => {
-      this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+      this.renderer.setPixelRatio(1);
       this.renderer.setSize(innerWidth, innerHeight, false);
     });
 
@@ -83,7 +82,7 @@ export class Game {
 
     this.sun = new THREE.DirectionalLight(0xfff4e0, 2.6);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(1024, 1024);
+    this.sun.shadow.mapSize.set(512, 512);
     this.sun.shadow.camera.left = -40; this.sun.shadow.camera.right = 40;
     this.sun.shadow.camera.top = 40; this.sun.shadow.camera.bottom = -40;
     this.sun.shadow.camera.far = 220;
