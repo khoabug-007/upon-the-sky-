@@ -21,6 +21,7 @@ export class Menu {
   private previewCam!: THREE.PerspectiveCamera;
   private previewChar!: Character;
   private previewRunning = false;
+  private previewRaf = 0;
   private busy = false;
 
   constructor(private network: Network) {
@@ -46,6 +47,9 @@ export class Menu {
   hide(): void {
     this.root.classList.add('hidden');
     this.previewRunning = false;
+    if (this.previewRaf) cancelAnimationFrame(this.previewRaf);
+    this.previewRaf = 0;
+    this.previewRenderer?.dispose();
   }
 
   private saveProfile(): void {
@@ -134,8 +138,10 @@ export class Menu {
 
   private setupPreview(): void {
     const canvas = document.getElementById('preview-canvas') as HTMLCanvasElement;
-    this.previewRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    this.previewRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.previewRenderer = new THREE.WebGLRenderer({
+      canvas, antialias: false, alpha: true, powerPreference: 'low-power', stencil: false
+    });
+    this.previewRenderer.setPixelRatio(1);
     this.previewScene = new THREE.Scene();
     this.previewCam = new THREE.PerspectiveCamera(38, 280 / 300, 0.1, 50);
     this.previewCam.position.set(0, 1.5, 4.4);
@@ -155,15 +161,15 @@ export class Menu {
 
     let last = performance.now();
     const loop = (now: number) => {
-      requestAnimationFrame(loop);
+      this.previewRaf = requestAnimationFrame(loop);
+      if (!this.previewRunning) return;
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      if (!this.previewRunning) return;
       this.previewChar.group.rotation.y += dt * 0.9;
       this.previewChar.update(dt);
       this.previewRenderer.render(this.previewScene, this.previewCam);
     };
-    requestAnimationFrame(loop);
+    this.previewRaf = requestAnimationFrame(loop);
   }
 
   // ---------- server flows ----------

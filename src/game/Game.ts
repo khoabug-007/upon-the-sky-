@@ -52,6 +52,7 @@ export class Game {
   private afterFlyRefY: number | null = null;
   private running = true;
   private renderPos = new THREE.Vector3();
+  private shadowTick = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -59,12 +60,22 @@ export class Game {
     private profile: Profile,
     joinInfo: JoinResult
   ) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.renderer.setSize(innerWidth, innerHeight);
+    const dpr = Math.min(devicePixelRatio, 1.5);
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: dpr < 1.3,
+      powerPreference: 'high-performance',
+      stencil: false
+    });
+    this.renderer.setPixelRatio(dpr);
+    this.renderer.setSize(innerWidth, innerHeight, false);
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    window.addEventListener('resize', () => this.renderer.setSize(innerWidth, innerHeight));
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
+    window.addEventListener('resize', () => {
+      this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+      this.renderer.setSize(innerWidth, innerHeight, false);
+    });
 
     this.scene.background = GROUND_SKY.clone();
     this.scene.fog = new THREE.Fog(GROUND_SKY.clone(), 60, 320);
@@ -72,7 +83,7 @@ export class Game {
 
     this.sun = new THREE.DirectionalLight(0xfff4e0, 2.6);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.set(1024, 1024);
     this.sun.shadow.camera.left = -40; this.sun.shadow.camera.right = 40;
     this.sun.shadow.camera.top = 40; this.sun.shadow.camera.bottom = -40;
     this.sun.shadow.camera.far = 220;
@@ -787,6 +798,8 @@ export class Game {
     this.cam.update(this.renderPos, rawDt);
     this.spaceSky.position.copy(this.cam.camera.position);
     this.world.skyFollow.position.copy(this.cam.camera.position);
+    this.shadowTick++;
+    this.renderer.shadowMap.needsUpdate = (this.shadowTick & 1) === 0;
     this.renderer.render(this.scene, this.cam.camera);
   };
 }

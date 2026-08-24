@@ -1161,8 +1161,9 @@ export class WorldMap {
         root.traverse((o) => {
           const m = o as THREE.Mesh;
           if (m.isMesh) {
-            m.castShadow = true;
-            m.receiveShadow = true;
+            m.castShadow = false;
+            m.receiveShadow = false;
+            m.frustumCulled = true;
           }
         });
         holder.add(root);
