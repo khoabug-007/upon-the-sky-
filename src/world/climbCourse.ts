@@ -309,15 +309,16 @@ function reverseSpin(
   return { x: ex, y, z: ez };
 }
 
-/** Levels 60–67: 50 rebounders climb in a zigzag, each bounce just reaching the next pad. */
+/** Levels 60–67: 50 rebounders climb a sharp Z — mostly left/right, each bounce just reaching the next. */
 function reboundRows(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number
 ): { x: number; y: number; z: number } {
   const gap = bounceStep(y);
-  const alongStep = gap * 0.52;
+  // Little forward, big side-to-side so the path reads as /\/\/\/ from above.
+  const alongStep = gap * 0.18;
   const sideAmp = Math.sqrt(Math.max(0.01, gap * gap - alongStep * alongStep)) / 2;
-  const rise = y > SPACE_BAND_Y ? 2.35 : 1.35;
+  const rise = y > SPACE_BAND_Y ? 6.4 : 1.45;
   const startAlong = 6;
   const startHalf = 2.6;
   const { w: sw, d: sd } = padDimsAlongTravel(dx, dz, 5.2, 5.2);
