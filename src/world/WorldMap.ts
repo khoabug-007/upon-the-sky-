@@ -108,10 +108,11 @@ const SPACE_STEP = 6.5;
 const JUMP_GAP = 2.2;
 /** Half-width of paired slider travel; keeps worst-case 3D hop inside walk reach. */
 const SLIDER_X = 2.2;
-/** Multiply along-travel size of walkways / blocks in the hand-authored course. */
-const PATH_LEN = 4;
-/** Roughly double authored Z travel with extra pieces (not by widening hop gaps). */
-const COURSE_RUN = 2;
+/** Along-travel walkway length vs the pre-stretch course (4× was too huge; now 1/3 of that). */
+const PATH_LEN = 4 / 3;
+/** Extra authored pieces vs the doubled run (now 1/3 of that). Hop holes stay JUMP_GAP. */
+const COURSE_RUN = 2 / 3;
+const runCount = (n: number) => Math.max(1, Math.round(n * COURSE_RUN));
 const along = (d: number) => d * PATH_LEN;
 const hopCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
   prevZ + prevAlong / 2 + JUMP_GAP + nextAlong / 2;
@@ -191,6 +192,12 @@ export class WorldMap {
   throwSwitches: ThrowSwitch[] = [];
   vehicleSpawn: { pos: THREE.Vector3; heading: number } | null = null;
   stars!: THREE.Points;
+  courseStars!: THREE.Points;
+  blockStars!: THREE.Points;
+  skyFollow = new THREE.Group();
+  courseNebulaMat!: THREE.SpriteMaterial;
+  skyBandMinY = 55;
+  skyBandMaxY = 400;
   endingPos = new THREE.Vector3();
   spawnPos = new THREE.Vector3(0, 0.1, -4);
 
@@ -1272,7 +1279,7 @@ export class WorldMap {
     // Obstacle 1: stepping stones over the pond of shame
     // (visual-only water: fall in and you wade through it in shame)
     const stoneD = along(2.2);
-    const stoneN = 4 * COURSE_RUN;
+    const stoneN = runCount(4);
     const stoneTouch = 0.2;
     let stoneZ = 11.4 + stoneD / 2;
     const firstStoneZ = stoneZ;
@@ -1303,7 +1310,7 @@ export class WorldMap {
     this.addTrampoline(0, 0, trampZ, 1.6, 'Pink Trampoline');
     const towerW = [4, 3.4, 3.4, 3.2, 3.2, 3.4];
     const towerX = [0, -1.8, 1.6, -1.7, 1.8, -0.9];
-    const towerN = 6 * COURSE_RUN;
+    const towerN = runCount(6);
     let towerY = 5;
     let prevZ = trampZ;
     let prevAlong = 1.6 * 2;
@@ -1327,7 +1334,7 @@ export class WorldMap {
     // Obstacle 4: sliders across the gap (Δ JUMP_STEP between standable tops).
     // Rebuild from tower-rest edge; hop holes stay JUMP_GAP (never × PATH_LEN).
     const sliderD = along(3.2);
-    const sliderN = 2 * COURSE_RUN;
+    const sliderN = runCount(2);
     let sliderEdge = restZ + restD / 2;
     let sliderTop = restY + 0.5 + 1.0;
     let lastSliderZ = sliderEdge;
@@ -1353,7 +1360,7 @@ export class WorldMap {
     this.addBox(10, 1, windD, 0, windY, windZ, 0xcfa15a, { name: 'Windmill Ledge' });
     this.addRotor(0, windY + 2.35, windZ, 4.6, -2.3, 0xf39c12);
     const beamLen = along(10);
-    const beamN = 2 * COURSE_RUN;
+    const beamN = runCount(2);
     let beamPrevZ = windZ;
     let beamPrevD = windD;
     let beamTop = windY + 0.5 + JUMP_STEP;
@@ -1383,7 +1390,7 @@ export class WorldMap {
     this.addBox(8, 1, deckD, 0, deckY, deckZ, 0xb5651d, { name: 'Elevator Deck' });
     this.addTrampoline(0, deckY + 0.5, deckZ, 1.4, 'Sky Trampoline');
     const stepD = along(5);
-    const stepN = 2 * COURSE_RUN;
+    const stepN = runCount(2);
     const stepX = [0, -2.2, 2.0, -1.8];
     let stepPrevZ = deckZ;
     let stepPrevD = deckD;
@@ -1405,7 +1412,7 @@ export class WorldMap {
     // Weave ±3.2 and drift ±2.5 so a +JUMP_STEP hop stays inside run (5.63 m), usually walk.
     const cloudPad = (d: number) => d * 0.86;
     const cloudD = along(6.2);
-    const cloudN = 7 * COURSE_RUN;
+    const cloudN = runCount(7);
     let cy = stepY + 2;
     let cz = hopCenter(elevRestZ, elevRestD, cloudPad(cloudD));
     for (let i = 0; i < cloudN; i++) {
@@ -1446,7 +1453,7 @@ export class WorldMap {
     const bridgeD = along(26);
     const bridgeCenter = joinCenter(slopeZ1, 0, bridgeD);
     this.addBox(6, 1, bridgeD, 0, bridgeY, bridgeCenter, 0xeceff1, { name: 'Sky Bridge' });
-    const rotorN = 2 * COURSE_RUN;
+    const rotorN = runCount(2);
     for (let i = 0; i < rotorN; i++) {
       const rz = slopeZ1 + bridgeD * ((i + 1) / (rotorN + 1));
       this.addRotor(0, bridgeY + 1.85, rz, 4.2, i % 2 === 0 ? 1.15 : -1.25, i % 2 === 0 ? 0xe74c3c : 0xe67e22);
@@ -1461,7 +1468,7 @@ export class WorldMap {
     // ===== SECTION 4: OUTER SPACE =====
     // Obstacle 10: low-gravity asteroid leaps (first hop Δ JUMP_STEP; then Δ SPACE_STEP)
     const astAlong = (r: number) => r * 0.58 * 2;
-    const astN = 6 * COURSE_RUN;
+    const astN = runCount(6);
     const astX = [0, 6, -5, 3, -2, 4, -3, 5, -4, 2, -1, 0];
     let ay = gauntY + JUMP_STEP;
     let az = hopCenter(gauntZ, cloudPad(gauntD), astAlong(2.6));
@@ -1485,7 +1492,7 @@ export class WorldMap {
 
     // Obstacle 11: the drifting belt
     const driftD = along(3.4);
-    const driftN = 2 * COURSE_RUN;
+    const driftN = runCount(2);
     let driftEdge = az + astAlong(4) / 2;
     let lastDriftZ = az;
     const driftColors = [0x7e57c2, 0x5c6bc0, 0x7e57c2, 0x5c6bc0];
@@ -1513,6 +1520,7 @@ export class WorldMap {
     const fy = beltAy, fz = beltAz;
     const more = appendClimbLevels(this.climbApi(), fy + 0.15, fz + 10, this.checkpoints.length);
     this.addErrorBandDecor();
+    this.addSkyBandStars(new THREE.Vector3(0, cloudRestY, cloudRestZ), more);
     this.endingPos.set(more.x, -80, more.z);
     this.endingRing = new THREE.Mesh(new THREE.TorusGeometry(3, 0.3, 14, 48),
       new THREE.MeshStandardMaterial({ color: 0xffeb3b, emissive: 0xd9a400, emissiveIntensity: 1.4, roughness: 0.25 }));
@@ -1534,9 +1542,112 @@ export class WorldMap {
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
-      color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0
+      color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, fog: false
     }));
     this.scene.add(this.stars);
+  }
+
+  /** Camera-following star dome + per-block stars so every pad from ~Level 40–67 sees the field. */
+  private addSkyBandStars(start: THREE.Vector3, end: { x: number; y: number; z: number }): void {
+    const numbered = this.checkpoints.filter((c) => /^Level (\d+)$/.exec(c.label));
+    const lv = (n: number) => numbered.find((c) => c.label === `Level ${n}`);
+    const from = lv(40) ?? lv(50) ?? this.checkpoints.find((c) => c.label === 'Cloud Nine');
+    const to = lv(67) ?? lv(60) ?? this.checkpoints[this.checkpoints.length - 1];
+    this.skyBandMinY = Math.min(start.y, from?.pos.y ?? start.y) - 4;
+    this.skyBandMaxY = Math.max(end.y, to?.pos.y ?? end.y) + 30;
+
+    this.skyFollow.clear();
+    this.scene.add(this.skyFollow);
+
+    const fibonacci = (count: number, radius: number, out: number[], offset = 0) => {
+      const golden = Math.PI * (3 - Math.sqrt(5));
+      for (let i = 0; i < count; i++) {
+        const y = 1 - (i / Math.max(1, count - 1)) * 2;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
+        const t = golden * i + offset;
+        out.push(Math.cos(t) * r * radius, y * radius, Math.sin(t) * r * radius);
+      }
+    };
+    const dome: number[] = [];
+    fibonacci(2800, 95, dome, 0.2);
+    fibonacci(1600, 150, dome, 1.7);
+    fibonacci(900, 210, dome, 3.1);
+    const domePos = new Float32Array(dome);
+    const domeGeo = new THREE.BufferGeometry();
+    domeGeo.setAttribute('position', new THREE.BufferAttribute(domePos, 3));
+    this.courseStars = new THREE.Points(domeGeo, new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 1.45,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false
+    }));
+    this.courseStars.frustumCulled = false;
+    this.skyFollow.add(this.courseStars);
+
+    const blob = document.createElement('canvas');
+    blob.width = 128;
+    blob.height = 128;
+    const ctx = blob.getContext('2d')!;
+    const grad = ctx.createRadialGradient(64, 48, 6, 64, 64, 60);
+    grad.addColorStop(0, 'rgba(220, 226, 236, 0.5)');
+    grad.addColorStop(0.35, 'rgba(170, 180, 198, 0.22)');
+    grad.addColorStop(1, 'rgba(140, 150, 168, 0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+    this.courseNebulaMat = new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(blob),
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false
+    });
+    const veilN = 16;
+    for (let i = 0; i < veilN; i++) {
+      const u = (i + 0.5) / veilN;
+      const y = 1 - u * 2;
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const t = i * 2.39996;
+      const sprite = new THREE.Sprite(this.courseNebulaMat);
+      sprite.position.set(Math.cos(t) * r * 120, y * 110, Math.sin(t) * r * 120);
+      sprite.scale.set(48 + (i % 5) * 14, 28 + (i % 4) * 18, 1);
+      this.skyFollow.add(sprite);
+    }
+
+    const around: number[] = [];
+    for (const c of this.colliders) {
+      const cy = (c.min.y + c.max.y) * 0.5;
+      if (cy < this.skyBandMinY - 2 || cy > this.skyBandMaxY + 8) continue;
+      const cx = (c.min.x + c.max.x) * 0.5;
+      const cz = (c.min.z + c.max.z) * 0.5;
+      const seed = Math.abs((cx * 13.1 + cy * 7.7 + cz * 3.3) % 1);
+      for (let k = 0; k < 14; k++) {
+        const ang = (k / 14) * Math.PI * 2 + seed * 6.2;
+        const lift = ((k * 5 + seed * 9) % 7) - 2;
+        const rad = 22 + (k % 5) * 9;
+        around.push(
+          cx + Math.cos(ang) * rad,
+          cy + 10 + lift * 4 + (k % 3) * 8,
+          cz + Math.sin(ang) * rad
+        );
+      }
+    }
+    const blockGeo = new THREE.BufferGeometry();
+    blockGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(around), 3));
+    this.blockStars = new THREE.Points(blockGeo, new THREE.PointsMaterial({
+      color: 0xf4f6fb,
+      size: 1.35,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      fog: false
+    }));
+    this.blockStars.frustumCulled = false;
+    this.scene.add(this.blockStars);
   }
 
   update(dt: number): void {

@@ -601,7 +601,7 @@ export class Game {
       this.spaceSkyMat.map = tex;
       this.spaceSkyMat.needsUpdate = true;
     });
-    this.spaceSky = new THREE.Mesh(new THREE.SphereGeometry(120, 48, 32), this.spaceSkyMat);
+    this.spaceSky = new THREE.Mesh(new THREE.SphereGeometry(280, 48, 32), this.spaceSkyMat);
     this.spaceSky.frustumCulled = false;
     this.spaceSky.renderOrder = -10;
     this.scene.add(this.spaceSky);
@@ -610,10 +610,16 @@ export class Game {
   private updateAtmosphere(): void {
     const y = this.controller.pos.y;
     const bg = this.scene.background as THREE.Color;
-    const skyT = THREE.MathUtils.smoothstep(y, 52, 95);
-    this.spaceSkyMat.opacity = skyT;
-    this.spaceSky.visible = skyT > 0.02;
-    if (y < 110) {
+    const inBand = y >= this.world.skyBandMinY - 6 && y <= this.world.skyBandMaxY + 24;
+    const bandT = inBand
+      ? 1
+      : THREE.MathUtils.smoothstep(y, this.world.skyBandMinY - 18, this.world.skyBandMinY);
+    const skyT = Math.max(bandT, THREE.MathUtils.smoothstep(y, 52, 95));
+    this.spaceSkyMat.opacity = Math.max(skyT, bandT * 0.92);
+    this.spaceSky.visible = this.spaceSkyMat.opacity > 0.02;
+    if (inBand) {
+      bg.copy(SPACE_SKY);
+    } else if (y < 110) {
       bg.copy(GROUND_SKY).lerp(HIGH_SKY, THREE.MathUtils.smoothstep(y, 35, 110));
     } else {
       bg.copy(HIGH_SKY).lerp(SPACE_SKY, THREE.MathUtils.smoothstep(y, 115, 190));
@@ -624,14 +630,21 @@ export class Game {
     if (this.controller.flyMode) {
       fog.near = 400;
       fog.far = 24000;
+    } else if (inBand) {
+      fog.near = 180;
+      fog.far = 9000;
     } else {
       fog.near = 70 + skyT * 50;
       fog.far = 320 + THREE.MathUtils.smoothstep(y, 70, 220) * 1400;
     }
+    (this.world.courseStars.material as THREE.PointsMaterial).opacity = bandT;
+    (this.world.blockStars.material as THREE.PointsMaterial).opacity = bandT;
+    this.world.courseNebulaMat.opacity = bandT * 0.42;
+    this.world.skyFollow.visible = bandT > 0.02;
     (this.world.stars.material as THREE.PointsMaterial).opacity =
-      THREE.MathUtils.smoothstep(y, 120, 185) * (1 - skyT * 0.55);
+      Math.max(bandT * 0.85, THREE.MathUtils.smoothstep(y, 90, 160) * (1 - skyT * 0.35));
     const spaceness = THREE.MathUtils.smoothstep(y, 90, 190);
-    this.sun.intensity = 2.6 - spaceness * 1.35;
+    this.sun.intensity = 2.6 - Math.max(spaceness, bandT * 0.7) * 1.35;
   }
 
   // ---------------- main loop ----------------
@@ -773,6 +786,7 @@ export class Game {
 
     this.cam.update(this.renderPos, rawDt);
     this.spaceSky.position.copy(this.cam.camera.position);
+    this.world.skyFollow.position.copy(this.cam.camera.position);
     this.renderer.render(this.scene, this.cam.camera);
   };
 }

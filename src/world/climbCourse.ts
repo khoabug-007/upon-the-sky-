@@ -9,10 +9,11 @@ const SPACE_BAND_Y = 88;
 /** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
 const WALK_HOP_GAP = 2.2;
 const PAD = 3.1;
-/** Multiply along-travel size of pads, slabs, arenas, beams, clouds, rocks. */
-const PATH_LEN = 4;
-/** Double how far the course advances (more hops / highway steps / along-spacing). */
-const COURSE_RUN = 2;
+/** Along-travel pad length vs the pre-stretch course (4× was too huge; now 1/3 of that). */
+const PATH_LEN = 4 / 3;
+/** Course piece count vs the doubled run (now 1/3 of that). Jump gaps stay WALK_HOP_GAP. */
+const COURSE_RUN = 2 / 3;
+const runCount = (n: number) => Math.max(1, Math.round(n * COURSE_RUN));
 
 /** Obstacle segments to append after the hand-authored course (same length as before). */
 export const TARGET_LEVELS = 100;
@@ -179,7 +180,7 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const slabD = 20 * PATH_LEN;
   const slabH = 1;
   const R = 40;
-  const steps = 72 * COURSE_RUN;
+  const steps = runCount(72);
   const dTheta = 0.30;
   const rise = 0.42;
   api.addBox(parkW, slabH, parkD, 0, y, z, 0x3a3a36, { name: 'Motor Pool' });
@@ -241,7 +242,7 @@ function backHop(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number, label: string, flag: boolean
 ): { x: number; y: number; z: number } {
-  const hops = 4 * COURSE_RUN;
+  const hops = runCount(4);
   const rise = 1.48;
   const padAcross = 2.7;
   const padAlong = padAcross * PATH_LEN;
@@ -298,7 +299,7 @@ function spiralUp(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number, label: string, seed: number, flag: boolean
 ): { x: number; y: number; z: number } {
-  const pads = 5 * COURSE_RUN;
+  const pads = runCount(5);
   const rise = 1.48;
   const R = 3.0;
   const padAcross = 2.55;
@@ -371,7 +372,7 @@ function hopStairs(
   api: ClimbApi, y: number, z: number, color: number, label: string,
   rise: number, flag: boolean, hard: number
 ) {
-  const hops = (3 + (hard > 0.55 ? 2 : hard > 0.25 ? 1 : 0)) * COURSE_RUN;
+  const hops = runCount(3 + (hard > 0.55 ? 2 : hard > 0.25 ? 1 : 0));
   const gap = WALK_HOP_GAP + hard * 0.24;
   const padAcross = PAD - hard * 0.7;
   const padAlong = padAcross * PATH_LEN;
@@ -456,7 +457,7 @@ function zigzag(
   const padAcross = PAD - 0.4 - hard * 0.45;
   const padAlong = padAcross * PATH_LEN;
   const step = padAlong + WALK_HOP_GAP + hard * 0.15;
-  const pillars = 4 * COURSE_RUN;
+  const pillars = runCount(4);
   for (let i = 0; i < pillars; i++) {
     api.addBox(padAcross, 0.7, padAlong, xs[i % xs.length], y + i * (rise * 0.45), z + i * step, color, {
       name: `${label} Pillar ${i + 1}`
