@@ -9,17 +9,21 @@ const SPACE_BAND_Y = 88;
 /** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
 const WALK_HOP_GAP = 2.2;
 const PAD = 3.1;
+/** Multiply along-travel size of pads, slabs, arenas, beams, clouds, rocks. */
+const PATH_LEN = 4;
+/** Double how far the course advances (more hops / highway steps / along-spacing). */
+const COURSE_RUN = 2;
 
 /** Obstacle segments to append after the hand-authored course (same length as before). */
 export const TARGET_LEVELS = 100;
 
 /** How many obstacle pieces between flags after this many checkpoints already exist. */
 function segmentsUntilNextFlag(placedCount: number): number {
-  if (placedCount < 21) return 1;
-  if (placedCount < 30) return 2;
-  if (placedCount < 40) return 3;
-  if (placedCount < 50) return 4;
-  return 5;
+  if (placedCount < 21) return 2;
+  if (placedCount < 30) return 3;
+  if (placedCount < 40) return 5;
+  if (placedCount < 50) return 8;
+  return 12;
 }
 
 export interface ThrowSwitch {
@@ -114,12 +118,13 @@ export function appendClimbLevels(
       const next = placed + 1;
       const lateColor = PALETTE[next % PALETTE.length];
       const label = `Level ${next}`;
+      const lateFlag = next === 54 || next === 60 || next === 67;
       if (next <= 54) {
-        ({ x, y, z } = backHop(api, x, y, z, dx, dz, lateColor, label));
+        ({ x, y, z } = backHop(api, x, y, z, dx, dz, lateColor, label, lateFlag));
       } else if (next <= 60) {
-        ({ x, y, z } = reverseSpin(api, x, y, z, dx, dz, lateColor, label));
+        ({ x, y, z } = reverseSpin(api, x, y, z, dx, dz, lateColor, label, lateFlag));
       } else {
-        ({ x, y, z } = spiralUp(api, x, y, z, dx, dz, lateColor, label, next));
+        ({ x, y, z } = spiralUp(api, x, y, z, dx, dz, lateColor, label, next, lateFlag));
       }
       placed = next;
       continue;
@@ -171,10 +176,10 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const parkW = 24;
   const parkD = 24;
   const roadW = 16;
-  const slabD = 20;
+  const slabD = 20 * PATH_LEN;
   const slabH = 1;
   const R = 40;
-  const steps = 72;
+  const steps = 72 * COURSE_RUN;
   const dTheta = 0.30;
   const rise = 0.42;
   api.addBox(parkW, slabH, parkD, 0, y, z, 0x3a3a36, { name: 'Motor Pool' });
@@ -184,10 +189,11 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   );
   api.addCheckpoint(0, y + 0.5, z, 'Level 17');
 
+  const connD = 16 * PATH_LEN;
   const zStart = z + parkD / 2 + slabD * 0.32;
   const cx = R;
   const cz = zStart;
-  api.addOrientedSlab(roadW, slabH, 16, 0, y, z + parkD / 2 + 7, 0, 0x3a3a36, 'Convoy Road');
+  api.addOrientedSlab(roadW, slabH, connD, 0, y, z + parkD / 2 + connD * 0.44, 0, 0x3a3a36, 'Convoy Road');
   api.addVehicleSpawn(0, y + 0.5, z + 1.2, 0);
 
   let lastX = 0, lastY = y, lastZ = zStart, lastTx = 0, lastTz = 1;
@@ -207,9 +213,11 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const ux = lastTx / tan;
   const uz = lastTz / tan;
   const exitRot = Math.atan2(lastTx, lastTz);
-  api.addOrientedSlab(roadW, slabH, 16, lastX + ux * 10, lastY, lastZ + uz * 10, exitRot, 0x3a3a36, 'Convoy Road');
-  const endX = lastX + ux * 22;
-  const endZ = lastZ + uz * 22;
+  const exitLead = 10 * PATH_LEN;
+  const exitRun = 22 * COURSE_RUN;
+  api.addOrientedSlab(roadW, slabH, connD, lastX + ux * exitLead, lastY, lastZ + uz * exitLead, exitRot, 0x3a3a36, 'Convoy Road');
+  const endX = lastX + ux * exitRun;
+  const endZ = lastZ + uz * exitRun;
   api.addErrorWorld(endX, lastY, endZ, -ux, -uz);
   api.addCheckpoint(endX, lastY + 0.5, endZ, 'Level 50');
   return { x: endX, y: lastY, z: endZ, dx: -ux, dz: -uz };
@@ -219,60 +227,83 @@ function sideOf(dx: number, dz: number, s: number): { x: number; z: number } {
   return { x: -dz * s, z: dx * s };
 }
 
+/** Width stays `across`; depth along travel axis scales with `along`. */
+function padDimsAlongTravel(
+  dx: number, dz: number, across: number, along: number
+): { w: number; d: number } {
+  return Math.abs(dx) >= Math.abs(dz)
+    ? { w: along, d: across }
+    : { w: across, d: along };
+}
+
 /** After Level 50: hop back the way you came, still climbing. */
 function backHop(
   api: ClimbApi, ox: number, y: number, z: number,
-  dx: number, dz: number, color: number, label: string
+  dx: number, dz: number, color: number, label: string, flag: boolean
 ): { x: number; y: number; z: number } {
-  const hops = 4;
+  const hops = 4 * COURSE_RUN;
   const rise = 1.48;
-  const pad = 2.7;
+  const padAcross = 2.7;
+  const padAlong = padAcross * PATH_LEN;
+  const hopSpan = padAlong + WALK_HOP_GAP;
   let py = y;
   let along = 0;
   for (let i = 0; i < hops; i++) {
     const side = sideOf(dx, dz, i % 2 ? -0.45 : 0.45);
-    along = i * (pad + WALK_HOP_GAP);
+    along = i * hopSpan;
     py = y + i * rise;
-    api.addBox(pad, 0.7, pad, ox + dx * along + side.x, py, z + dz * along + side.z, color, {
+    const { w, d } = padDimsAlongTravel(dx, dz, padAcross, padAlong);
+    api.addBox(w, 0.7, d, ox + dx * along + side.x, py, z + dz * along + side.z, color, {
       name: `${label} Hop ${i + 1}`
     });
   }
-  along += 4;
+  along += hopSpan;
   const ex = ox + dx * along;
   const ez = z + dz * along;
-  api.addBox(pad + 1.1, 1, pad + 1.1, ex, py, ez, color, { name: label });
-  flagAt(api, ex, py + 0.5, ez, label, true);
+  const exitAcross = padAcross + 1.1;
+  const exitAlong = padAlong + 1.1;
+  const { w: ew, d: ed } = padDimsAlongTravel(dx, dz, exitAcross, exitAlong);
+  api.addBox(ew, 1, ed, ex, py, ez, color, { name: label });
+  flagAt(api, ex, py + 0.5, ez, label, flag);
   return { x: ex, y: py, z: ez };
 }
 
 /** Levels 55–60: spinning bars turn the other way. */
 function reverseSpin(
   api: ClimbApi, ox: number, y: number, z: number,
-  dx: number, dz: number, color: number, label: string
+  dx: number, dz: number, color: number, label: string, flag: boolean
 ): { x: number; y: number; z: number } {
-  const mid = 6;
+  const mid = 6 * COURSE_RUN;
   const mx = ox + dx * mid;
   const mz = z + dz * mid;
-  api.addBox(10, 0.8, 10, mx, y, mz, color, { name: `${label} Arena` });
+  const arenaAcross = 10;
+  const arenaAlong = arenaAcross * PATH_LEN;
+  const { w: aw, d: ad } = padDimsAlongTravel(dx, dz, arenaAcross, arenaAlong);
+  api.addBox(aw, 0.8, ad, mx, y, mz, color, { name: `${label} Arena` });
   api.addRotor(mx, y + 1.35, mz, 5.0, -1.45, 0xe74c3c);
   api.addRotor(mx, y + 1.35, mz, 3.2, -2.05, 0xf39c12);
-  const along = mid + 8;
+  const landAcross = 3.3;
+  const landAlong = landAcross * PATH_LEN;
+  const along = mid + arenaAlong / 2 + WALK_HOP_GAP + landAlong / 2;
   const ex = ox + dx * along;
   const ez = z + dz * along;
-  api.addBox(3.3, 1, 3.3, ex, y, ez, color, { name: label });
-  flagAt(api, ex, y + 0.5, ez, label, true);
+  const { w: lw, d: ld } = padDimsAlongTravel(dx, dz, landAcross, landAlong);
+  api.addBox(lw, 1, ld, ex, y, ez, color, { name: label });
+  flagAt(api, ex, y + 0.5, ez, label, flag);
   return { x: ex, y, z: ez };
 }
 
 /** Levels 61–67: pads and rotors climb a rising spiral. */
 function spiralUp(
   api: ClimbApi, ox: number, y: number, z: number,
-  dx: number, dz: number, color: number, label: string, seed: number
+  dx: number, dz: number, color: number, label: string, seed: number, flag: boolean
 ): { x: number; y: number; z: number } {
-  const pads = 5;
+  const pads = 5 * COURSE_RUN;
   const rise = 1.48;
   const R = 3.0;
-  const step = 2.2;
+  const padAcross = 2.55;
+  const padAlong = padAcross * PATH_LEN;
+  const step = padAlong + WALK_HOP_GAP;
   const dAng = 0.7;
   let lastX = ox, lastY = y, lastZ = z;
   for (let i = 0; i < pads; i++) {
@@ -280,43 +311,47 @@ function spiralUp(
     const px = ox + dx * (i * step) + Math.cos(ang) * R;
     const pz = z + dz * (i * step) + Math.sin(ang) * R;
     const py = y + i * rise;
-    api.addBox(2.55, 0.7, 2.55, px, py, pz, color, { name: `${label} Coil ${i + 1}` });
+    const { w, d } = padDimsAlongTravel(dx, dz, padAcross, padAlong);
+    api.addBox(w, 0.7, d, px, py, pz, color, { name: `${label} Coil ${i + 1}` });
     api.addRotor(px, py + 1.32, pz, 2.5, 1.2 + i * 0.1, 0xe67e22, ang);
     lastX = px; lastY = py; lastZ = pz;
   }
-  flagAt(api, lastX, lastY + 0.5, lastZ, label, true);
+  flagAt(api, lastX, lastY + 0.5, lastZ, label, flag);
   return { x: lastX, y: lastY, z: lastZ };
 }
 
 function placeComingSoon(
   api: ClimbApi, x: number, y: number, z: number, dx: number, dz: number
 ): void {
-  const plaza = 4;
+  const plaza = 4 * PATH_LEN;
   const px = x + dx * plaza;
   const pz = z + dz * plaza;
-  api.addBox(12, 1, 12, px, y, pz, 0xcfa15a, { name: 'Coming Soon Plaza' });
+  const plazaW = 12;
+  const plazaD = 12 * PATH_LEN;
+  const { w: pw, d: pd } = padDimsAlongTravel(dx, dz, plazaW, plazaD);
+  api.addBox(pw, 1, pd, px, y, pz, 0xcfa15a, { name: 'Coming Soon Plaza' });
   api.addSign(
     ['LEVELS 68–100', 'COMING SOON'],
     px - dz * 2.4, y + 7.2, pz + dx * 2.4, 2.5
   );
 
-  const wallAlong = 16;
+  const wallAlong = 16 * COURSE_RUN;
   const wx = px + dx * wallAlong;
   const wz = pz + dz * wallAlong;
   const rotY = Math.atan2(dx, dz);
-  api.addOrientedSlab(180, 72, 14, wx, y + 28, wz, rotY, 0xf5f7fa, 'Coming Soon Wall');
-  api.addOrientedSlab(180, 18, 80, wx + dx * 28, y + 68, wz + dz * 28, rotY, 0xf5f7fa, 'Coming Soon Roof');
+  api.addOrientedSlab(180, 72, 14 * PATH_LEN, wx, y + 28, wz, rotY, 0xf5f7fa, 'Coming Soon Wall');
+  api.addOrientedSlab(180, 18, 80 * PATH_LEN, wx + dx * 28, y + 68, wz + dz * 28, rotY, 0xf5f7fa, 'Coming Soon Roof');
 
   for (let i = 0; i < 18; i++) {
     const s = (i - 8.5) * 9;
     const side = sideOf(dx, dz, s);
-    const along = 10 + (i % 4) * 5;
+    const along = (10 + (i % 4) * 5) * COURSE_RUN;
     api.addCloud(
       px + dx * along + side.x,
       y + 4 + (i % 5) * 7,
       pz + dz * along + side.z,
       16 + (i % 3) * 6,
-      12 + (i % 2) * 5,
+      (12 + (i % 2) * 5) * PATH_LEN,
       undefined,
       `Fog Cloud ${i + 1}`,
       false
@@ -325,42 +360,55 @@ function placeComingSoon(
 }
 
 function restPad(api: ClimbApi, y: number, z: number, color: number, label: string, flag: boolean) {
-  api.addBox(PAD + 2, 1, PAD + 2, 0, y, z, color, { name: label });
+  const across = PAD + 2;
+  const along = across * PATH_LEN;
+  api.addBox(across, 1, along, 0, y, z, color, { name: label });
   flagAt(api, 0, y + 0.5, z, label, flag);
-  return { y, z: z + 9 };
+  return { y, z: z + 9 * COURSE_RUN };
 }
 
 function hopStairs(
   api: ClimbApi, y: number, z: number, color: number, label: string,
   rise: number, flag: boolean, hard: number
 ) {
-  const hops = 3 + (hard > 0.55 ? 2 : hard > 0.25 ? 1 : 0);
+  const hops = (3 + (hard > 0.55 ? 2 : hard > 0.25 ? 1 : 0)) * COURSE_RUN;
   const gap = WALK_HOP_GAP + hard * 0.24;
-  const pad = PAD - hard * 0.7;
+  const padAcross = PAD - hard * 0.7;
+  const padAlong = padAcross * PATH_LEN;
+  const hopSpan = padAlong + gap;
   let endY = y;
   let endZ = z;
   for (let i = 0; i < hops; i++) {
     endY = y + i * rise;
-    endZ = z + i * (pad * 0.55 + gap);
-    api.addBox(pad, 0.7, pad, (i % 2 ? -1.2 - hard : 1.2 + hard), endY, endZ, color, {
+    endZ = z + i * hopSpan;
+    api.addBox(padAcross, 0.7, padAlong, (i % 2 ? -1.2 - hard : 1.2 + hard), endY, endZ, color, {
       name: `${label} Hop ${i + 1}`
     });
   }
-  api.addBox(pad + 1.2, 1, pad + 1.2, 0, endY, endZ + 4, color, { name: label });
-  flagAt(api, 0, endY + 0.5, endZ + 4, label, flag);
-  return { y: endY, z: endZ + 12 };
+  const landAcross = padAcross + 1.2;
+  const landAlong = padAcross * PATH_LEN + 1.2;
+  endZ = endZ + hopSpan;
+  api.addBox(landAcross, 1, landAlong, 0, endY, endZ, color, { name: label });
+  flagAt(api, 0, endY + 0.5, endZ, label, flag);
+  return { y: endY, z: endZ + 12 * COURSE_RUN };
 }
 
 function rotorYard(
   api: ClimbApi, y: number, z: number, color: number, label: string,
   flag: boolean, hard: number
 ) {
-  api.addBox(11, 0.8, 11, 0, y, z + 5, color, { name: `${label} Arena` });
-  api.addRotor(0, y + 1.35, z + 5, 5.2, 1.05 + hard * 0.95);
-  if (hard > 0.5) api.addRotor(0, y + 1.35, z + 5, 3.4, -(1.2 + hard * 0.7), 0xf39c12);
-  api.addBox(PAD + 1 - hard * 0.4, 1, PAD + 1 - hard * 0.4, 0, y, z + 13, color, { name: label });
-  flagAt(api, 0, y + 0.5, z + 13, label, flag);
-  return { y, z: z + 20 };
+  const arenaAcross = 11;
+  const arenaAlong = arenaAcross * PATH_LEN;
+  const arenaZ = z + arenaAlong / 2;
+  api.addBox(arenaAcross, 0.8, arenaAlong, 0, y, arenaZ, color, { name: `${label} Arena` });
+  api.addRotor(0, y + 1.35, arenaZ, 5.2, 1.05 + hard * 0.95);
+  if (hard > 0.5) api.addRotor(0, y + 1.35, arenaZ, 3.4, -(1.2 + hard * 0.7), 0xf39c12);
+  const landAcross = PAD + 1 - hard * 0.4;
+  const landAlong = landAcross * PATH_LEN;
+  const landZ = arenaZ + arenaAlong / 2 + WALK_HOP_GAP + landAlong / 2;
+  api.addBox(landAcross, 1, landAlong, 0, y, landZ, color, { name: label });
+  flagAt(api, 0, y + 0.5, landZ, label, flag);
+  return { y, z: landZ + landAlong / 2 + 8 * COURSE_RUN };
 }
 
 function beams(
@@ -368,25 +416,36 @@ function beams(
   rise: number, flag: boolean, hard: number
 ) {
   const w = 1.15 - hard * 0.32;
-  api.addBox(w, 0.45, 9, -1.2 - hard * 0.4, y + 0.2, z + 5, 0x90a4ae, { name: `${label} Beam A` });
-  api.addBox(w, 0.45, 9, 1.2 + hard * 0.4, y + 0.2 + rise, z + 14, 0x90a4ae, { name: `${label} Beam B` });
+  const beamLen = 9 * PATH_LEN;
+  const beamAZ = z + beamLen / 2;
+  const beamBZ = beamAZ + beamLen / 2 + WALK_HOP_GAP + beamLen / 2;
+  api.addBox(w, 0.45, beamLen, -1.2 - hard * 0.4, y + 0.2, beamAZ, 0x90a4ae, { name: `${label} Beam A` });
+  api.addBox(w, 0.45, beamLen, 1.2 + hard * 0.4, y + 0.2 + rise, beamBZ, 0x90a4ae, { name: `${label} Beam B` });
   const endY = y + rise;
-  api.addBox(PAD + 1 - hard * 0.5, 1, PAD + 1 - hard * 0.5, 0, endY, z + 22, color, { name: label });
-  flagAt(api, 0, endY + 0.5, z + 22, label, flag);
-  return { y: endY, z: z + 30 };
+  const landAcross = PAD + 1 - hard * 0.5;
+  const landAlong = landAcross * PATH_LEN;
+  const landZ = beamBZ + beamLen / 2 + WALK_HOP_GAP + landAlong / 2;
+  api.addBox(landAcross, 1, landAlong, 0, endY, landZ, color, { name: label });
+  flagAt(api, 0, endY + 0.5, landZ, label, flag);
+  return { y: endY, z: landZ + landAlong / 2 + 8 * COURSE_RUN };
 }
 
 function trampHop(
   api: ClimbApi, y: number, z: number, color: number, label: string,
   rise: number, flag: boolean, hard: number
 ) {
-  api.addBox(PAD - hard * 0.4, 0.8, PAD - hard * 0.4, 0, y, z, color, { name: `${label} Approach` });
-  api.addTrampoline(0, y + 0.4, z + 4, 1.35 - hard * 0.15, `${label} Pad`);
+  const approachAcross = PAD - hard * 0.4;
+  const approachAlong = approachAcross * PATH_LEN;
+  api.addBox(approachAcross, 0.8, approachAlong, 0, y, z, color, { name: `${label} Approach` });
+  const trampZ = z + approachAlong / 2 + 0.45;
+  api.addTrampoline(0, y + 0.4, trampZ, 1.35 - hard * 0.15, `${label} Pad`);
   const landY = y + Math.min(rise + 1.2 + hard * 0.8, 5.8);
-  const landZ = z + 10 + hard * 2.2;
-  api.addBox(PAD + 0.4 - hard * 0.5, 1, PAD + 0.4 - hard * 0.5, 0, landY, landZ, color, { name: label });
+  const landAcross = PAD + 0.4 - hard * 0.5;
+  const landAlong = landAcross * PATH_LEN;
+  const landZ = trampZ + 6 + hard * 2.2 + landAlong / 2;
+  api.addBox(landAcross, 1, landAlong, 0, landY, landZ, color, { name: label });
   flagAt(api, 0, landY + 0.5, landZ, label, flag);
-  return { y: landY, z: landZ + 8 };
+  return { y: landY, z: landZ + 8 * COURSE_RUN };
 }
 
 function zigzag(
@@ -394,35 +453,45 @@ function zigzag(
   rise: number, flag: boolean, hard: number
 ) {
   const xs = [-2.4 - hard, 2.4 + hard, -2.2 - hard * 0.6, 0];
-  const pad = PAD - 0.4 - hard * 0.45;
-  const step = WALK_HOP_GAP + PAD * 0.5 + hard * 0.15;
-  for (let i = 0; i < 4; i++) {
-    api.addBox(pad, 0.7, pad, xs[i], y + i * (rise * 0.45), z + i * step, color, {
+  const padAcross = PAD - 0.4 - hard * 0.45;
+  const padAlong = padAcross * PATH_LEN;
+  const step = padAlong + WALK_HOP_GAP + hard * 0.15;
+  const pillars = 4 * COURSE_RUN;
+  for (let i = 0; i < pillars; i++) {
+    api.addBox(padAcross, 0.7, padAlong, xs[i % xs.length], y + i * (rise * 0.45), z + i * step, color, {
       name: `${label} Pillar ${i + 1}`
     });
   }
-  const endY = y + 3 * (rise * 0.45);
-  const endZ = z + 3 * step + 4;
-  api.addBox(PAD + 1 - hard * 0.4, 1, PAD + 1 - hard * 0.4, 0, endY, endZ, color, { name: label });
+  const endY = y + (pillars - 1) * (rise * 0.45);
+  const endZ = z + (pillars - 1) * step + step;
+  const landAcross = PAD + 1 - hard * 0.4;
+  const landAlong = landAcross * PATH_LEN;
+  api.addBox(landAcross, 1, landAlong, 0, endY, endZ, color, { name: label });
   flagAt(api, 0, endY + 0.5, endZ, label, flag);
-  return { y: endY, z: endZ + 8 };
+  return { y: endY, z: endZ + 8 * COURSE_RUN };
 }
 
 function moverLift(
   api: ClimbApi, y: number, z: number, color: number, label: string,
   rise: number, flag: boolean, hard: number
 ) {
-  api.addBox(PAD - hard * 0.3, 0.8, PAD - hard * 0.3, 0, y, z, color, { name: `${label} Dock` });
+  const dockAcross = PAD - hard * 0.3;
+  const dockAlong = dockAcross * PATH_LEN;
+  api.addBox(dockAcross, 0.8, dockAlong, 0, y, z, color, { name: `${label} Dock` });
   const top = y + Math.max(2.2, rise);
+  const liftZ = z + dockAlong / 2 + 3.2;
   api.addMover(
     3.2 - hard * 0.5, 0.65, 3.2 - hard * 0.5,
-    new THREE.Vector3(0, y + 0.4, z + 5),
-    new THREE.Vector3(0, top, z + 5),
+    new THREE.Vector3(0, y + 0.4, liftZ),
+    new THREE.Vector3(0, top, liftZ),
     0xab47bc, 0.7 + hard * 0.55, 0, `${label} Lift`
   );
-  api.addBox(PAD + 1 - hard * 0.4, 1, PAD + 1 - hard * 0.4, 0, top, z + 11, color, { name: label });
-  flagAt(api, 0, top + 0.5, z + 11, label, flag);
-  return { y: top, z: z + 19 };
+  const landAcross = PAD + 1 - hard * 0.4;
+  const landAlong = landAcross * PATH_LEN;
+  const landZ = liftZ + 6 + landAlong / 2;
+  api.addBox(landAcross, 1, landAlong, 0, top, landZ, color, { name: label });
+  flagAt(api, 0, top + 0.5, landZ, label, flag);
+  return { y: top, z: landZ + landAlong / 2 + 8 * COURSE_RUN };
 }
 
 function puffs(
@@ -430,24 +499,27 @@ function puffs(
   rise: number, flag: boolean, hard: number
 ) {
   const w = 6.2 - hard * 1.4;
-  api.addCloud(0, y, z, w, w, undefined, `${label} Cloud A`);
+  const d = w * PATH_LEN;
+  api.addCloud(0, y, z, w, d, undefined, `${label} Cloud A`);
   const bx = 2.4 + hard * 1.2;
-  const bz = z + 7 + hard;
-  api.addCloud(bx, y + rise, bz, w, w, undefined, `${label} Cloud B`);
+  const bz = z + d / 2 + WALK_HOP_GAP + d / 2;
+  api.addCloud(bx, y + rise, bz, w, d, undefined, `${label} Cloud B`);
   flagAt(api, bx, y + rise + 0.58, bz, label, flag);
-  return { y: y + rise, z: z + 16 + hard };
+  return { y: y + rise, z: bz + d / 2 + 8 * COURSE_RUN };
 }
 
 function rocks(
   api: ClimbApi, y: number, z: number, label: string,
   rise: number, flag: boolean, hard: number
 ) {
-  api.addAsteroid(-2 - hard, y, z, 2.5 - hard * 0.35, `${label} Rock A`);
+  const rA = 2.5 - hard * 0.35;
+  const rB = 2.8 - hard * 0.3;
+  api.addAsteroid(-2 - hard, y, z, rA, `${label} Rock A`);
   const rx = 2.4 + hard;
-  const rz = z + 9 + hard * 0.8;
-  api.addAsteroid(rx, y + rise, rz, 2.8 - hard * 0.3, `${label} Rock B`);
+  const rz = z + rA + WALK_HOP_GAP + rB;
+  api.addAsteroid(rx, y + rise, rz, rB, `${label} Rock B`);
   flagAt(api, rx, y + rise + 0.1, rz, label, flag);
-  return { y: y + rise, z: z + 18 + hard };
+  return { y: y + rise, z: rz + rB + 8 * COURSE_RUN };
 }
 
 /** Catch pad sits above stand-jump height, so the crate must be thrown (Q, then B). */
@@ -460,7 +532,8 @@ export function placeThrowGate(
   seed: number,
   withCheckpoint = true
 ) {
-  api.addBox(PAD + 2, 1, PAD + 1, 0, y, z, color, { name: `${label} Start` });
+  const startAlong = (PAD + 1) * PATH_LEN;
+  api.addBox(PAD + 2, 1, startAlong, 0, y, z, color, { name: `${label} Start` });
   api.addProp(seed % 2 ? -1.6 : 1.6, y + 0.5, z + 0.4, 'crate');
   api.addSign(
     ['THROW the crate (B)', 'onto the high green pad.', `Sprint jump ${JUMP_DIST_RUN.toFixed(1)} m still too low.`],
@@ -472,7 +545,7 @@ export function placeThrowGate(
   const padCol = api.lastCollider();
 
   const wallH = 3.5;
-  const wallZ = z + 7.2;
+  const wallZ = z + startAlong / 2 + 0.6;
   const gateVisual = api.addBox(8, wallH, 1.05, 0, y + wallH / 2, wallZ, 0x5d4e60, { name: `${label} Gate` });
   const gateCollider = api.lastCollider();
   api.addThrowSwitch({
@@ -483,7 +556,9 @@ export function placeThrowGate(
   });
 
   const landZ = wallZ + 5;
-  api.addBox(PAD + 1.5, 1, PAD + 1.5, 0, y, landZ, color, { name: label });
+  const landAcross = PAD + 1.5;
+  const landAlong = landAcross * PATH_LEN;
+  api.addBox(landAcross, 1, landAlong, 0, y, landZ, color, { name: label });
   if (withCheckpoint) api.addCheckpoint(0, y + 0.5, landZ, label);
-  return { y, z: landZ + 8 };
+  return { y, z: landZ + 8 * COURSE_RUN };
 }

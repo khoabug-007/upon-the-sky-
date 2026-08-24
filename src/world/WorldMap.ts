@@ -108,6 +108,17 @@ const SPACE_STEP = 6.5;
 const JUMP_GAP = 2.2;
 /** Half-width of paired slider travel; keeps worst-case 3D hop inside walk reach. */
 const SLIDER_X = 2.2;
+/** Multiply along-travel size of walkways / blocks in the hand-authored course. */
+const PATH_LEN = 4;
+/** Roughly double authored Z travel with extra pieces (not by widening hop gaps). */
+const COURSE_RUN = 2;
+const along = (d: number) => d * PATH_LEN;
+const hopCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
+  prevZ + prevAlong / 2 + JUMP_GAP + nextAlong / 2;
+const joinCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
+  prevZ + prevAlong / 2 + nextAlong / 2;
+const BG_WATCHES = 200;
+const BG_RIFTS = 32;
 
 const mat = (color: number, rough = 0.85) => lookMaterial(color, rough);
 
@@ -191,6 +202,11 @@ export class WorldMap {
   private flickerPickAt = 4;
   private warpWatches: WarpWatch[] = [];
   private errorRifts: THREE.Mesh[] = [];
+  private instancedWatchMats: THREE.MeshStandardMaterial[] = [];
+  private errorWorldOrigin = new THREE.Vector3();
+  private riftSpriteMat: THREE.ShaderMaterial | null = null;
+  private riftDoorMatA: THREE.MeshStandardMaterial | null = null;
+  private riftDoorMatB: THREE.MeshStandardMaterial | null = null;
 
   constructor(private scene: THREE.Scene) {
     this.build();
@@ -730,7 +746,8 @@ export class WorldMap {
 
   /** Level 50 plaza: title, vanishing outer tiles, rifts, oversized warped watches. */
   private addErrorWorld(x: number, y: number, z: number, dx: number, dz: number): void {
-    const tile = 4.2;
+    this.errorWorldOrigin.set(x, y, z);
+    const tile = 4.2 * PATH_LEN;
     const n = 5;
     const h = 1;
     for (let ix = 0; ix < n; ix++) {
@@ -739,9 +756,9 @@ export class WorldMap {
         const pz = z + (iz - 2) * tile;
         const inner = ix >= 1 && ix <= 3 && iz >= 1 && iz <= 3;
         if (inner) {
-          this.addBox(tile, h, tile, px, y, pz, 0x3a3a36, { name: 'Level 50 Plaza' });
+          this.addBox(tile, h, tile, px, y, pz, 0x242420, { name: 'Level 50 Plaza' });
         } else {
-          const hue = (ix * 5 + iz) % 2 === 0 ? 0x2a2238 : 0x1c2430;
+          const hue = (ix * 5 + iz) % 2 === 0 ? 0x1a1528 : 0x101820;
           this.addBox(tile, h, tile, px, y, pz, hue, { name: 'Error World', flicker: true });
         }
       }
@@ -756,64 +773,84 @@ export class WorldMap {
     this.addErrorWatches(x, y, z, dx, dz);
   }
 
-  private addErrorRifts(x: number, y: number, z: number, dx: number, dz: number): void {
-    const riftMat = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: {
-        uTime: { value: 0 },
-        uA: { value: new THREE.Color(0x6b4cff) },
-        uB: { value: new THREE.Color(0x19e3c2) }
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float uTime;
-        uniform vec3 uA;
-        uniform vec3 uB;
-        varying vec2 vUv;
-        void main() {
-          vec2 p = vUv * 2.0 - 1.0;
-          float r = length(p);
-          float a = atan(p.y, p.x);
-          float swirl = sin(a * 5.0 + uTime * 1.4 - r * 8.0);
-          float ring = smoothstep(1.0, 0.12, r) * smoothstep(0.02, 0.22, r);
-          vec3 col = mix(uA, uB, 0.5 + 0.5 * swirl);
-          gl_FragColor = vec4(col, ring * (0.35 + 0.25 * swirl));
-        }
-      `
-    });
-    const doorMat = new THREE.MeshStandardMaterial({
-      color: 0x1a1424, metalness: 0.55, roughness: 0.4, emissive: 0x2a1850, emissiveIntensity: 0.35
-    });
+  private errorRiftMaterials(): {
+    rift: THREE.ShaderMaterial;
+    doorA: THREE.MeshStandardMaterial;
+    doorB: THREE.MeshStandardMaterial;
+  } {
+    if (!this.riftSpriteMat) {
+      this.riftSpriteMat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: {
+          uTime: { value: 0 },
+          uA: { value: new THREE.Color(0x6b4cff) },
+          uB: { value: new THREE.Color(0x19e3c2) }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uTime;
+          uniform vec3 uA;
+          uniform vec3 uB;
+          varying vec2 vUv;
+          void main() {
+            vec2 p = vUv * 2.0 - 1.0;
+            float r = length(p);
+            float a = atan(p.y, p.x);
+            float swirl = sin(a * 5.0 + uTime * 1.4 - r * 8.0);
+            float ring = smoothstep(1.0, 0.12, r) * smoothstep(0.02, 0.22, r);
+            vec3 col = mix(uA, uB, 0.5 + 0.5 * swirl);
+            gl_FragColor = vec4(col, ring * (0.35 + 0.25 * swirl));
+          }
+        `
+      });
+      this.riftDoorMatA = new THREE.MeshStandardMaterial({
+        color: 0x1a1424, metalness: 0.55, roughness: 0.4, emissive: 0x2a1850, emissiveIntensity: 0.42
+      });
+      this.riftDoorMatB = new THREE.MeshStandardMaterial({
+        color: 0x141a1c, metalness: 0.55, roughness: 0.4, emissive: 0x0d3d38, emissiveIntensity: 0.38
+      });
+    }
+    return { rift: this.riftSpriteMat!, doorA: this.riftDoorMatA!, doorB: this.riftDoorMatB! };
+  }
 
+  private placeErrorRift(
+    px: number, py: number, pz: number,
+    lookX: number, lookY: number, lookZ: number, seed: number
+  ): void {
+    const { rift: riftMat, doorA, doorB } = this.errorRiftMaterials();
+    const doorMat = seed % 2 === 0 ? doorA : doorB;
+    const g = new THREE.Group();
+    g.position.set(px, py, pz);
+    g.lookAt(lookX, lookY, lookZ);
+    const postL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 7.2, 0.45), doorMat);
+    const postR = postL.clone();
+    postL.position.set(-2.2, 0, 0);
+    postR.position.set(2.2, 0, 0);
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.5, 0.5), doorMat);
+    lintel.position.y = 3.5;
+    const rift = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 6.4, 1, 1), riftMat);
+    rift.position.z = -0.05;
+    this.errorRifts.push(rift);
+    g.add(postL, postR, lintel, rift);
+    this.scene.add(g);
+  }
+
+  private addErrorRifts(x: number, y: number, z: number, dx: number, dz: number): void {
     for (let i = 0; i < 14; i++) {
       const ang = (i / 14) * Math.PI * 2;
       const rad = 28 + (i % 4) * 7;
       const px = x + Math.cos(ang) * rad + dx * ((i % 3) - 1) * 4;
       const pz = z + Math.sin(ang) * rad + dz * ((i % 3) - 1) * 4;
       const py = y + 6 + (i % 5) * 3.2;
-      const g = new THREE.Group();
-      g.position.set(px, py, pz);
-      g.lookAt(x, y + 4, z);
-
-      const postL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 7.2, 0.45), doorMat);
-      const postR = postL.clone();
-      postL.position.set(-2.2, 0, 0);
-      postR.position.set(2.2, 0, 0);
-      const lintel = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.5, 0.5), doorMat);
-      lintel.position.y = 3.5;
-      const rift = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 6.4, 1, 1), riftMat.clone());
-      rift.position.z = -0.05;
-      this.errorRifts.push(rift);
-      g.add(postL, postR, lintel, rift);
-      this.scene.add(g);
+      this.placeErrorRift(px, py, pz, x, y + 4, z, i);
     }
   }
 
@@ -876,6 +913,228 @@ export class WorldMap {
     return g;
   }
 
+  private instancedWarpGold(colorHex: number, emissiveHex: number): THREE.MeshStandardMaterial {
+    const m = new THREE.MeshStandardMaterial({
+      color: colorHex, metalness: 0.82, roughness: 0.28,
+      emissive: emissiveHex, emissiveIntensity: 0.08
+    });
+    m.userData.warped = true;
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = { value: 0 };
+      shader.vertexShader = `uniform float uTime;\nattribute float aPhase;\n${shader.vertexShader}`.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        float t = uTime + aPhase;
+        float w = 0.10 + 0.08 * sin(t * 0.8 + transformed.y * 4.0);
+        transformed.x += sin(transformed.y * 5.2 + t * 1.7) * w;
+        transformed.z += cos(transformed.x * 4.6 + t * 1.25) * w;
+        transformed.y += sin(transformed.z * 3.8 + t * 0.95) * (w * 0.7);`
+      );
+      m.userData.shader = shader;
+    };
+    return m;
+  }
+
+  private collectErrorBandSpine(): THREE.Vector3[] {
+    const pts: THREE.Vector3[] = [];
+    const seen = new Set<string>();
+    const push = (x: number, y: number, z: number) => {
+      const k = `${Math.round(x * 2)}_${Math.round(y * 2)}_${Math.round(z * 2)}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      pts.push(new THREE.Vector3(x, y, z));
+    };
+
+    if (this.errorWorldOrigin.lengthSq() > 0) {
+      push(this.errorWorldOrigin.x, this.errorWorldOrigin.y, this.errorWorldOrigin.z);
+    }
+
+    for (const cp of this.checkpoints) {
+      if (/^Level (5[0-9]|6[0-8])$/.test(cp.label)
+        || /coming soon/i.test(cp.label)
+        || /error world/i.test(cp.label)) {
+        push(cp.pos.x, cp.pos.y, cp.pos.z);
+      }
+    }
+    for (const c of this.colliders) {
+      const name = c.name ?? '';
+      if (!/Coming Soon|Error World|Level 50 Plaza|^Level 5|^Level 6/.test(name)) continue;
+      push((c.min.x + c.max.x) * 0.5, c.max.y, (c.min.z + c.max.z) * 0.5);
+    }
+    if (!pts.length) {
+      if (this.errorWorldOrigin.lengthSq() > 0) {
+        push(this.errorWorldOrigin.x, this.errorWorldOrigin.y, this.errorWorldOrigin.z);
+      } else {
+        const last = this.checkpoints[this.checkpoints.length - 1];
+        if (last) push(last.pos.x, last.pos.y, last.pos.z);
+      }
+    }
+    return pts;
+  }
+
+  private spineSample(pts: THREE.Vector3[], t: number): { p: THREE.Vector3; dir: THREE.Vector3 } {
+    if (pts.length === 1) {
+      return { p: pts[0]!.clone(), dir: new THREE.Vector3(0, 0, 1) };
+    }
+    const f = t * (pts.length - 1);
+    const i = Math.min(pts.length - 2, Math.max(0, Math.floor(f)));
+    const u = f - i;
+    const a = pts[i]!;
+    const b = pts[i + 1]!;
+    const p = a.clone().lerp(b, u);
+    const dir = b.clone().sub(a);
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    else dir.normalize();
+    return { p, dir };
+  }
+
+  private addErrorBandDecor(): void {
+    const spine = this.collectErrorBandSpine();
+    if (!spine.length) return;
+    this.addErrorBandRifts(spine);
+    this.addErrorBandWatches(spine);
+  }
+
+  private addErrorBandRifts(spine: THREE.Vector3[]): void {
+    for (let i = 0; i < BG_RIFTS; i++) {
+      const t = ((i * 0.61803398875) % 1);
+      const { p, dir } = this.spineSample(spine, t);
+      const side = new THREE.Vector3(-dir.z, 0, dir.x);
+      if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
+      else side.normalize();
+      const sign = i % 2 === 0 ? 1 : -1;
+      const rad = 22 + (i * 31 % 49);
+      const px = p.x + side.x * rad * sign + dir.x * ((i % 5) - 2) * 3;
+      const pz = p.z + side.z * rad * sign + dir.z * ((i % 5) - 2) * 3;
+      const py = p.y + 5 + (i % 7) * 3.1;
+      this.placeErrorRift(px, py, pz, p.x, p.y + 3, p.z, i + 14);
+    }
+  }
+
+  private addErrorBandWatches(spine: THREE.Vector3[]): void {
+    const n = BG_WATCHES;
+    const phases = new Float32Array(n);
+    for (let i = 0; i < n; i++) phases[i] = i * 1.17;
+    const withPhase = (geo: THREE.BufferGeometry) => {
+      geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases.slice(), 1));
+      return geo;
+    };
+
+    const goldMat = this.instancedWarpGold(0xffffff, 0xc4a35a);
+    const darkMat = this.instancedWarpGold(0x3a2a18, 0x3a2a18);
+    const faceMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, roughness: 0.55, metalness: 0.08,
+      emissive: 0x221810, emissiveIntensity: 0.12
+    });
+    this.instancedWatchMats.push(goldMat, darkMat);
+
+    const parts: Array<{
+      mesh: THREE.InstancedMesh;
+      pos: (hourA: number, minA: number) => THREE.Vector3;
+      rot: (hourA: number, minA: number) => THREE.Euler;
+    }> = [
+      {
+        mesh: new THREE.InstancedMesh(withPhase(new THREE.TorusGeometry(0.62, 0.1, 12, 36)), goldMat, n),
+        pos: () => new THREE.Vector3(0, 0, 0),
+        rot: () => new THREE.Euler(Math.PI / 2, 0, 0)
+      },
+      {
+        mesh: new THREE.InstancedMesh(withPhase(new THREE.CylinderGeometry(0.55, 0.55, 0.06, 36)), faceMat, n),
+        pos: () => new THREE.Vector3(0, 0, 0),
+        rot: () => new THREE.Euler(0, 0, 0)
+      },
+      {
+        mesh: new THREE.InstancedMesh(withPhase(new THREE.CylinderGeometry(0.58, 0.58, 0.08, 28)), darkMat, n),
+        pos: () => new THREE.Vector3(0, -0.06, 0),
+        rot: () => new THREE.Euler(0, 0, 0)
+      },
+      {
+        mesh: new THREE.InstancedMesh(withPhase(new THREE.CylinderGeometry(0.08, 0.1, 0.22, 10)), goldMat, n),
+        pos: () => new THREE.Vector3(0, 0, 0.72),
+        rot: () => new THREE.Euler(Math.PI / 2, 0, 0)
+      },
+      {
+        mesh: new THREE.InstancedMesh(withPhase(new THREE.TorusGeometry(0.12, 0.025, 8, 18)), goldMat, n),
+        pos: () => new THREE.Vector3(0, 0, 0.9),
+        rot: () => new THREE.Euler(0, 0, 0)
+      },
+      {
+        mesh: new THREE.InstancedMesh(withPhase(new THREE.BoxGeometry(0.06, 0.28, 0.03)), darkMat, n),
+        pos: (hourA) => new THREE.Vector3(Math.sin(hourA) * 0.12, 0.05, Math.cos(hourA) * 0.12),
+        rot: (hourA) => new THREE.Euler(0, hourA, 0)
+      },
+      {
+        mesh: new THREE.InstancedMesh(withPhase(new THREE.BoxGeometry(0.04, 0.4, 0.025)), darkMat, n),
+        pos: (_h, minA) => new THREE.Vector3(Math.sin(minA) * 0.18, 0.055, Math.cos(minA) * 0.18),
+        rot: (_h, minA) => new THREE.Euler(0, minA, 0)
+      }
+    ];
+
+    const goldTones = [0xc4a35a, 0xb8860b, 0xc9a84c, 0xa67c52, 0xd4af37, 0x8d6e3d];
+    const ivoryTones = [0xf3e6c8, 0xf7edd8, 0xead9b8, 0xe8dcc4];
+    const dummy = new THREE.Object3D();
+    const local = new THREE.Object3D();
+    const world = new THREE.Matrix4();
+    const composed = new THREE.Matrix4();
+    const goldColor = new THREE.Color();
+    const ivoryColor = new THREE.Color();
+
+    for (const part of parts) {
+      part.mesh.frustumCulled = false;
+      part.mesh.castShadow = false;
+      part.mesh.receiveShadow = false;
+      this.scene.add(part.mesh);
+    }
+
+    for (let i = 0; i < n; i++) {
+      const t = ((i * 0.61803398875) % 1);
+      const { p, dir } = this.spineSample(spine, t);
+      const side = new THREE.Vector3(-dir.z, 0, dir.x);
+      if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
+      else side.normalize();
+      const sign = i % 2 === 0 ? 1 : -1;
+      const rad = 18 + (i * 29 % 73);
+      const alongJitter = ((i * 13) % 17) - 8;
+      const px = p.x + side.x * rad * sign + dir.x * alongJitter;
+      const pz = p.z + side.z * rad * sign + dir.z * alongJitter;
+      const py = p.y + 8 + (i * 19 % 33);
+      const scale = 5 + (i * 13 % 130) / 10;
+      const hour = i % 12;
+      const minute = (Math.floor(i / 12) * 7) % 60;
+      const hourA = ((hour % 12) + minute / 60) * (Math.PI * 2 / 12);
+      const minA = (minute / 60) * Math.PI * 2;
+
+      dummy.position.set(px, py, pz);
+      dummy.scale.setScalar(scale);
+      dummy.rotation.set(0, 0, 0);
+      dummy.lookAt(p.x, p.y + 2, p.z);
+      dummy.rotateX(-0.35 + ((i % 7) - 3) * 0.06);
+      dummy.rotateZ(((i % 5) - 2) * 0.05);
+      dummy.updateMatrix();
+      world.copy(dummy.matrix);
+
+      goldColor.setHex(goldTones[i % goldTones.length]!);
+      ivoryColor.setHex(ivoryTones[i % ivoryTones.length]!);
+
+      for (let pIdx = 0; pIdx < parts.length; pIdx++) {
+        const part = parts[pIdx]!;
+        local.position.copy(part.pos(hourA, minA));
+        local.rotation.copy(part.rot(hourA, minA));
+        local.scale.set(1, 1, 1);
+        local.updateMatrix();
+        composed.multiplyMatrices(world, local.matrix);
+        part.mesh.setMatrixAt(i, composed);
+        if (pIdx === 1) part.mesh.setColorAt(i, ivoryColor);
+        else if (pIdx === 0 || pIdx === 3 || pIdx === 4) part.mesh.setColorAt(i, goldColor);
+      }
+    }
+
+    for (const part of parts) {
+      part.mesh.instanceMatrix.needsUpdate = true;
+      if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
+    }
+  }
+
   private updateFlickerPads(): void {
     const now = this.time;
     let gone = 0;
@@ -903,6 +1162,11 @@ export class WorldMap {
     for (const rift of this.errorRifts) {
       const mat = rift.material as THREE.ShaderMaterial;
       if (mat.uniforms?.uTime) mat.uniforms.uTime.value = this.time;
+    }
+    if (this.riftSpriteMat?.uniforms?.uTime) this.riftSpriteMat.uniforms.uTime.value = this.time;
+    for (const m of this.instancedWatchMats) {
+      const sh = m.userData.shader as { uniforms: { uTime: { value: number } } } | undefined;
+      if (sh) sh.uniforms.uTime.value = this.time;
     }
     for (const w of this.warpWatches) {
       const t = this.time + w.phase;
@@ -1007,130 +1271,248 @@ export class WorldMap {
 
     // Obstacle 1: stepping stones over the pond of shame
     // (visual-only water: fall in and you wade through it in shame)
-    const pond = new THREE.Mesh(new THREE.BoxGeometry(24, 0.14, 10),
-      new THREE.MeshStandardMaterial({ color: 0x2f8fd5, roughness: 0.2, transparent: true, opacity: 0.85 }));
-    pond.position.set(0, 0.07, 16);
-    this.scene.add(pond);
-    for (let i = 0; i < 4; i++) {
-      this.addBox(2.2, 1.4, 2.2, (i % 2 === 0 ? -1.6 : 1.6), 0.1, 12.5 + i * 2.4, 0xd9a066,
+    const stoneD = along(2.2);
+    const stoneN = 4 * COURSE_RUN;
+    const stoneTouch = 0.2;
+    let stoneZ = 11.4 + stoneD / 2;
+    const firstStoneZ = stoneZ;
+    for (let i = 0; i < stoneN; i++) {
+      this.addBox(2.2, 1.4, stoneD, (i % 2 === 0 ? -1.6 : 1.6), 0.1, stoneZ, 0xd9a066,
         { name: `Stepping Stone ${i + 1}` });
+      if (i < stoneN - 1) stoneZ += stoneD + stoneTouch;
     }
-    this.addCheckpoint(1.6, 0.8, 19.7, 'Pond Survivor');
+    const lastStoneZ = stoneZ;
+    const pondStart = firstStoneZ - stoneD / 2;
+    const pondEnd = lastStoneZ + stoneD / 2;
+    const pond = new THREE.Mesh(new THREE.BoxGeometry(24, 0.14, pondEnd - pondStart + 1.2),
+      new THREE.MeshStandardMaterial({ color: 0x2f8fd5, roughness: 0.2, transparent: true, opacity: 0.85 }));
+    pond.position.set(0, 0.07, (pondStart + pondEnd) / 2);
+    this.scene.add(pond);
+    this.addCheckpoint(1.6, 0.8, lastStoneZ, 'Pond Survivor');
 
-    // Obstacle 2: the angry spinning bar
-    this.addBox(14, 0.8, 14, 0, 0.4, 34, 0xcfa15a, { name: 'Rotor Arena' });
-    this.addRotor(0, 1.75, 34, 6.4, 1.9);
-    this.addSign(['This bar has anger', 'issues. JUMP!'], -6, 3.2, 30, 0.75);
-    this.addCheckpoint(0, 0.8, 34, 'Bar Dodger');
+    // Obstacle 2: the angry spinning bar (no Bar Dodger flag)
+    const arenaD = along(14);
+    const arenaZ = lastStoneZ + stoneD / 2 + 6.2 + arenaD / 2;
+    this.addBox(14, 0.8, arenaD, 0, 0.4, arenaZ, 0xcfa15a, { name: 'Rotor Arena' });
+    this.addRotor(0, 1.75, arenaZ - arenaD * 0.22, 6.4, 1.9);
+    this.addRotor(0, 1.75, arenaZ + arenaD * 0.22, 6.4, -1.7, 0xe67e22);
+    this.addSign(['This bar has anger', 'issues. JUMP!'], -6, 3.2, arenaZ - arenaD / 2 + 4, 0.75);
 
     // Obstacle 3: trampoline + tower hops up to the sky road (≤ JUMP_STEP per hop after bounce)
-    this.addTrampoline(0, 0, 50, 1.6, 'Pink Trampoline');
-    this.addBox(4, 1, 4, 0, 5, 56, 0xd9a066, { name: 'Tower Block 1' });
-    this.addBox(3.4, 1, 3.4, -4, 6.5, 59, 0xd9a066, { name: 'Tower Block 2' });
-    this.addBox(3.4, 1, 3.4, 1, 8, 62, 0xd9a066, { name: 'Tower Block 3' });
-    this.addBox(3.2, 1, 3.2, -3, 9.5, 65, 0xd9a066, { name: 'Tower Block 4' });
-    this.addBox(3.2, 1, 3.2, 2, 11, 68, 0xd9a066, { name: 'Tower Block 5' });
-    this.addBox(3.4, 1, 3.4, -1, 12.5, 70, 0xd9a066, { name: 'Tower Block 6' });
-    this.addBox(6, 1, 6, 0, 14, 73, 0xb5651d, { name: 'Tower Rest' });
-    this.addSign(['Boing responsibly.'], 3.4, 2.2, 49, 0.65);
-    this.addCheckpoint(0, 14.5, 73, 'Tower Climber');
+    const trampZ = arenaZ + arenaD / 2 + 2 + 1.6;
+    this.addTrampoline(0, 0, trampZ, 1.6, 'Pink Trampoline');
+    const towerW = [4, 3.4, 3.4, 3.2, 3.2, 3.4];
+    const towerX = [0, -1.8, 1.6, -1.7, 1.8, -0.9];
+    const towerN = 6 * COURSE_RUN;
+    let towerY = 5;
+    let prevZ = trampZ;
+    let prevAlong = 1.6 * 2;
+    for (let i = 0; i < towerN; i++) {
+      const w = towerW[i % towerW.length]!;
+      const d = along(w);
+      const z = hopCenter(prevZ, prevAlong, d);
+      this.addBox(w, 1, d, towerX[i % towerX.length]!, towerY, z, 0xd9a066, { name: `Tower Block ${i + 1}` });
+      prevZ = z;
+      prevAlong = d;
+      towerY += JUMP_STEP;
+    }
+    const restD = along(6);
+    const restZ = hopCenter(prevZ, prevAlong, restD);
+    const restY = towerY;
+    this.addBox(6, 1, restD, 0, restY, restZ, 0xb5651d, { name: 'Tower Rest' });
+    this.addSign(['Boing responsibly.'], 3.4, 2.2, trampZ - 1, 0.65);
+    this.addCheckpoint(0, restY + 0.5, restZ, 'Tower Climber');
 
     // ===== SECTION 2: THE CLIMB =====
-    // Obstacle 4: two sliding squares across the gap (Δ JUMP_STEP between standable tops).
-    // Tower pad (z=73, d=6) ends at z=76; landing (z=92, d=6) starts at z=89.
-    // Split that 13 m with two 3.2-deep sliders and three JUMP_GAP holes.
-    const sliderD = 3.2;
-    const sliderHalf = sliderD / 2;
-    const firstSliderZ = 76 + JUMP_GAP + sliderHalf;   // 79.8
-    const secondSliderZ = firstSliderZ + sliderHalf + JUMP_GAP + sliderHalf; // 85.2
-    this.addMover(sliderD, 0.7, sliderD,
-      new THREE.Vector3(-SLIDER_X, 15.15, firstSliderZ), new THREE.Vector3(SLIDER_X, 15.15, firstSliderZ),
-      0x42a5f5, 1.05, 0, 'Sliding Block A');
-    this.addMover(sliderD, 0.7, sliderD,
-      new THREE.Vector3(-SLIDER_X, 16.65, secondSliderZ), new THREE.Vector3(SLIDER_X, 16.65, secondSliderZ),
-      0x42a5f5, 1.05, 1.2, 'Sliding Block B');
-    this.addBox(6, 1, 6, 0, 18, 92, 0xb5651d, { name: 'Gap Landing' });
-    this.addCheckpoint(0, 18.5, 92, 'Gap Glider');
+    // Obstacle 4: sliders across the gap (Δ JUMP_STEP between standable tops).
+    // Rebuild from tower-rest edge; hop holes stay JUMP_GAP (never × PATH_LEN).
+    const sliderD = along(3.2);
+    const sliderN = 2 * COURSE_RUN;
+    let sliderEdge = restZ + restD / 2;
+    let sliderTop = restY + 0.5 + 1.0;
+    let lastSliderZ = sliderEdge;
+    for (let i = 0; i < sliderN; i++) {
+      const sliderZ = sliderEdge + JUMP_GAP + sliderD / 2;
+      const cy = sliderTop - 0.35;
+      this.addMover(3.2, 0.7, sliderD,
+        new THREE.Vector3(-SLIDER_X, cy, sliderZ), new THREE.Vector3(SLIDER_X, cy, sliderZ),
+        0x42a5f5, 1.05, i * 1.2, i % 2 === 0 ? 'Sliding Block A' : 'Sliding Block B');
+      sliderEdge = sliderZ + sliderD / 2;
+      lastSliderZ = sliderZ;
+      sliderTop += JUMP_STEP;
+    }
+    const gapLandD = along(6);
+    const gapLandZ = hopCenter(lastSliderZ, sliderD, gapLandD);
+    const gapLandY = sliderTop - 0.5;
+    this.addBox(6, 1, gapLandD, 0, gapLandY, gapLandZ, 0xb5651d, { name: 'Gap Landing' });
 
-    // Obstacle 5: windmill ledge + narrow beams (Δ1.5 per hop)
-    this.addBox(10, 1, 10, 0, 19.5, 102, 0xcfa15a, { name: 'Windmill Ledge' });
-    this.addRotor(0, 21.85, 102, 4.6, -2.3, 0xf39c12);
-    this.addBox(1.1, 0.5, 10, -1.35, 21.25, 112, 0x90a4ae, { name: 'Narrow Beam 1' });
-    this.addBox(1.1, 0.5, 10, 1.35, 22.75, 121, 0x90a4ae, { name: 'Narrow Beam 2' });
-    this.addBox(7, 1, 7, 0, 24, 130, 0xb5651d, { name: 'Beam Landing' });
-    this.addSign(['Narrow beams:', 'crawl (R) if scared.', 'No judgement.'], 5, 23, 108, 0.8);
-    this.addCheckpoint(0, 24.5, 130, 'Beam Walker');
+    // Obstacle 5: windmill ledge + narrow beams (connected walkways; Δ JUMP_STEP on tops)
+    const windD = along(10);
+    const windZ = hopCenter(gapLandZ, gapLandD, windD);
+    const windY = gapLandY + JUMP_STEP;
+    this.addBox(10, 1, windD, 0, windY, windZ, 0xcfa15a, { name: 'Windmill Ledge' });
+    this.addRotor(0, windY + 2.35, windZ, 4.6, -2.3, 0xf39c12);
+    const beamLen = along(10);
+    const beamN = 2 * COURSE_RUN;
+    let beamPrevZ = windZ;
+    let beamPrevD = windD;
+    let beamTop = windY + 0.5 + JUMP_STEP;
+    this.addSign(['Narrow beams:', 'crawl (R) if scared.', 'No judgement.'], 5, beamTop + 1.5, windZ + windD / 2 + 4, 0.8);
+    for (let i = 0; i < beamN; i++) {
+      const z = joinCenter(beamPrevZ, beamPrevD, beamLen);
+      const x = i % 2 === 0 ? -1.35 : 1.35;
+      this.addBox(1.1, 0.5, beamLen, x, beamTop - 0.25, z, 0x90a4ae, { name: `Narrow Beam ${i + 1}` });
+      beamPrevZ = z;
+      beamPrevD = beamLen;
+      beamTop += JUMP_STEP;
+    }
+    const beamLandD = along(7);
+    const beamLandZ = joinCenter(beamPrevZ, beamPrevD, beamLandD);
+    const beamLandY = beamTop - 0.5;
+    this.addBox(7, 1, beamLandD, 0, beamLandY, beamLandZ, 0xb5651d, { name: 'Beam Landing' });
 
     // Obstacle 6: the sky elevator (lift carries you; post-trampoline hops ≤ JUMP_STEP)
-    this.addMover(3.6, 0.7, 3.6, new THREE.Vector3(0, 25, 137), new THREE.Vector3(0, 43, 137), 0xab47bc, 0.55, 0, 'Sky Elevator');
-    this.addBox(8, 1, 8, 0, 44, 145, 0xb5651d, { name: 'Elevator Deck' });
-    this.addTrampoline(0, 44.5, 145, 1.4, 'Sky Trampoline');
-    this.addBox(5, 1, 5, 0, 50, 152, 0x9c6b30, { name: 'High Step 1' });
-    this.addBox(5, 1, 5, -5, 51.5, 158, 0x9c6b30, { name: 'High Step 2' });
-    this.addBox(8, 1, 8, 0, 53, 164, 0xb5651d, { name: 'Elevator Rest' });
-    this.addCheckpoint(0, 53.5, 164, 'Elevator Enjoyer');
+    const elevD = 3.6;
+    const elevZ = hopCenter(beamLandZ, beamLandD, elevD);
+    const elevY0 = beamLandY + 1;
+    const elevY1 = elevY0 + 18;
+    this.addMover(elevD, 0.7, elevD, new THREE.Vector3(0, elevY0, elevZ), new THREE.Vector3(0, elevY1, elevZ), 0xab47bc, 0.55, 0, 'Sky Elevator');
+    const deckD = along(8);
+    const deckZ = hopCenter(elevZ, elevD, deckD);
+    const deckY = elevY1 + 1;
+    this.addBox(8, 1, deckD, 0, deckY, deckZ, 0xb5651d, { name: 'Elevator Deck' });
+    this.addTrampoline(0, deckY + 0.5, deckZ, 1.4, 'Sky Trampoline');
+    const stepD = along(5);
+    const stepN = 2 * COURSE_RUN;
+    const stepX = [0, -2.2, 2.0, -1.8];
+    let stepPrevZ = deckZ;
+    let stepPrevD = deckD;
+    let stepY = deckY + 6;
+    for (let i = 0; i < stepN; i++) {
+      const z = hopCenter(stepPrevZ, stepPrevD, stepD);
+      this.addBox(5, 1, stepD, stepX[i % stepX.length]!, stepY, z, 0x9c6b30, { name: `High Step ${i + 1}` });
+      stepPrevZ = z;
+      stepPrevD = stepD;
+      stepY += JUMP_STEP;
+    }
+    const elevRestD = along(8);
+    const elevRestZ = hopCenter(stepPrevZ, stepPrevD, elevRestD);
+    this.addBox(8, 1, elevRestD, 0, stepY, elevRestZ, 0xb5651d, { name: 'Elevator Rest' });
+    this.addCheckpoint(0, stepY + 0.5, elevRestZ, 'Elevator Enjoyer');
 
     // ===== SECTION 3: THE SKY =====
     // Obstacle 7: cloud hopping (Δ JUMP_STEP; walkable collider cap on puff top).
     // Weave ±3.2 and drift ±2.5 so a +JUMP_STEP hop stays inside run (5.63 m), usually walk.
-    let cy = 55, cz = 172;
-    for (let i = 0; i < 7; i++) {
+    const cloudPad = (d: number) => d * 0.86;
+    const cloudD = along(6.2);
+    const cloudN = 7 * COURSE_RUN;
+    let cy = stepY + 2;
+    let cz = hopCenter(elevRestZ, elevRestD, cloudPad(cloudD));
+    for (let i = 0; i < cloudN; i++) {
       const cx = Math.sin(i * 1.3) * 3.2;
       const drifting = i % 3 === 2;
       const cloudName = drifting ? `Drifting Cloud ${i + 1}` : `Cloud ${i + 1}`;
       if (drifting) {
-        this.addCloud(cx, cy, cz, 6, 6.2, { b: new THREE.Vector3(cx + (i % 2 ? -2.5 : 2.5), cy, cz), speed: 0.8 }, cloudName);
+        this.addCloud(cx, cy, cz, 6, cloudD, { b: new THREE.Vector3(cx + (i % 2 ? -2.5 : 2.5), cy, cz), speed: 0.8 }, cloudName);
       } else {
-        this.addCloud(cx, cy, cz, 6, 6.2, undefined, cloudName);
+        this.addCloud(cx, cy, cz, 6, cloudD, undefined, cloudName);
       }
-      cy += JUMP_STEP; cz += 7;
+      if (i < cloudN - 1) {
+        cz = hopCenter(cz, cloudPad(cloudD), cloudPad(cloudD));
+        cy += JUMP_STEP;
+      }
     }
-    this.addCloud(0, cy, cz, 10, 9, undefined, 'Rest Cloud');
+    const restCloudD = along(9);
+    cz = hopCenter(cz, cloudPad(cloudD), cloudPad(restCloudD));
+    cy += JUMP_STEP;
+    this.addCloud(0, cy, cz, 10, restCloudD, undefined, 'Rest Cloud');
     this.addSign(['Clouds: 100% certified', 'bouncy-ish. Probably.'], 4, cy + 3, cz - 2, 0.9);
     this.addCheckpoint(0, cy + 0.58, cz, 'Cloud Nine');
-    const restY = cy, restZ = cz;
+    const cloudRestY = cy, cloudRestZ = cz;
 
-    const throwLesson = placeThrowGate(this.climbApi(), restY, restZ + 10, 0xb5651d, 'Throw Lesson', 1, false);
+    const throwZ = cloudRestZ + cloudPad(restCloudD) / 2 + 6;
+    const throwLesson = placeThrowGate(this.climbApi(), cloudRestY, throwZ, 0xb5651d, 'Throw Lesson', 1, false);
 
-    // Obstacle 8: one long straight ramp from Rest Cloud to the checkpoint. No landings, no wall.
+    // Obstacle 8: one long straight ramp. No Wall Magnet flag.
     const slopeZ0 = throwLesson.z + 2.4;
     const slopeY0 = throwLesson.y + 0.5;
-    const slopeY1 = restY + 17;
-    const slopeZ1 = slopeZ0 + 32;
+    const slopeY1 = cloudRestY + 17;
+    const slopeZ1 = slopeZ0 + 32 * PATH_LEN;
     this.addBallSlope(-3.4, 3.4, slopeZ0, slopeY0, slopeZ1, slopeY1, 'Checkpoint Slope');
     this.addSign(['One long ramp.', 'Walk it to the flag.', 'SHIFT is slower on slopes.'], -7, slopeY0 + 6, slopeZ0 + 8, 0.95);
-    this.addCheckpoint(0, slopeY1, slopeZ1, 'Wall Magnet');
 
-    // Obstacle 9: rotor gauntlet on the long sky bridge
-    const bridgeY = slopeY1 - 0.5, bridgeZ = slopeZ1 + 4;
-    this.addBox(6, 1, 26, 0, bridgeY, bridgeZ + 9, 0xeceff1, { name: 'Sky Bridge' });
-    this.addRotor(0, bridgeY + 1.85, bridgeZ + 4, 4.2, 1.15, 0xe74c3c);
-    this.addRotor(0, bridgeY + 1.85, bridgeZ + 14, 4.2, -1.25, 0xe67e22);
-    this.addTrampoline(0, bridgeY - 0.02, bridgeZ + 21, 1.4, 'Bridge Trampoline');
-    this.addCloud(0, bridgeY + 4, bridgeZ + 27, 8, 7, undefined, 'Gauntlet Cloud');
-    this.addCheckpoint(0, bridgeY + 4.58, bridgeZ + 27, 'Gauntlet Hero');
+    // Obstacle 9: rotor gauntlet on the long sky bridge (joined to the slope)
+    const bridgeY = slopeY1 - 0.5;
+    const bridgeD = along(26);
+    const bridgeCenter = joinCenter(slopeZ1, 0, bridgeD);
+    this.addBox(6, 1, bridgeD, 0, bridgeY, bridgeCenter, 0xeceff1, { name: 'Sky Bridge' });
+    const rotorN = 2 * COURSE_RUN;
+    for (let i = 0; i < rotorN; i++) {
+      const rz = slopeZ1 + bridgeD * ((i + 1) / (rotorN + 1));
+      this.addRotor(0, bridgeY + 1.85, rz, 4.2, i % 2 === 0 ? 1.15 : -1.25, i % 2 === 0 ? 0xe74c3c : 0xe67e22);
+    }
+    this.addTrampoline(0, bridgeY - 0.02, slopeZ1 + bridgeD * 0.88, 1.4, 'Bridge Trampoline');
+    const gauntD = along(7);
+    const gauntZ = hopCenter(bridgeCenter, bridgeD, cloudPad(gauntD));
+    const gauntY = bridgeY + 4;
+    this.addCloud(0, gauntY, gauntZ, 8, gauntD, undefined, 'Gauntlet Cloud');
+    this.addCheckpoint(0, gauntY + 0.58, gauntZ, 'Gauntlet Hero');
 
     // ===== SECTION 4: OUTER SPACE =====
-    // Obstacle 10: low-gravity asteroid leaps (first hop Δ1.5; then Δ SPACE_STEP in space)
-    let ay = bridgeY + 6, az = bridgeZ + 36;
-    const astX = [0, 6, -5, 3, -2, 0];
-    for (let i = 0; i < 6; i++) {
-      this.addAsteroid(astX[i], ay, az, 2.6 + (i % 2) * 0.7, `Asteroid ${i + 1}`);
-      ay += SPACE_STEP; az += 9.5;
+    // Obstacle 10: low-gravity asteroid leaps (first hop Δ JUMP_STEP; then Δ SPACE_STEP)
+    const astAlong = (r: number) => r * 0.58 * 2;
+    const astN = 6 * COURSE_RUN;
+    const astX = [0, 6, -5, 3, -2, 4, -3, 5, -4, 2, -1, 0];
+    let ay = gauntY + JUMP_STEP;
+    let az = hopCenter(gauntZ, cloudPad(gauntD), astAlong(2.6));
+    let prevAstZ = az;
+    let prevAstAlong = astAlong(2.6);
+    for (let i = 0; i < astN; i++) {
+      const r = 2.6 + (i % 2) * 0.7;
+      if (i > 0) {
+        az = hopCenter(prevAstZ, prevAstAlong, astAlong(r));
+        ay += SPACE_STEP;
+      }
+      this.addAsteroid(astX[i]!, ay, az, r, `Asteroid ${i + 1}`);
+      prevAstZ = az;
+      prevAstAlong = astAlong(r);
     }
+    ay += SPACE_STEP;
+    az = hopCenter(prevAstZ, prevAstAlong, astAlong(4));
     this.addAsteroid(0, ay, az, 4, 'Asteroid Rest');
     this.addSign(['Outer space:', 'no air, no lag,', 'no excuses.'], 5, ay + 4, az, 1);
     this.addCheckpoint(0, ay + 0.1, az, 'Asteroid Hopper');
 
     // Obstacle 11: the drifting belt
-    this.addMover(3.4, 0.8, 3.4, new THREE.Vector3(-6, ay + 5, az + 8), new THREE.Vector3(6, ay + 5, az + 8), 0x7e57c2, 0.9, 0, 'Drift Pad 1');
-    this.addMover(3.4, 0.8, 3.4, new THREE.Vector3(6, ay + 10, az + 15), new THREE.Vector3(-6, ay + 10, az + 15), 0x5c6bc0, 1.1, 3, 'Drift Pad 2');
-    this.addMover(3.4, 0.8, 3.4, new THREE.Vector3(0, ay + 12, az + 22), new THREE.Vector3(0, ay + 19, az + 22), 0x26a69a, 0.7, 1, 'Space Lift');
-    this.addAsteroid(0, ay + 21, az + 29, 3.4, 'Belt Asteroid');
-    this.addCheckpoint(0, ay + 21.1, az + 29, 'Belt Rider');
+    const driftD = along(3.4);
+    const driftN = 2 * COURSE_RUN;
+    let driftEdge = az + astAlong(4) / 2;
+    let lastDriftZ = az;
+    const driftColors = [0x7e57c2, 0x5c6bc0, 0x7e57c2, 0x5c6bc0];
+    for (let i = 0; i < driftN; i++) {
+      const dz = driftEdge + JUMP_GAP + driftD / 2;
+      const y = ay + (i < 2 ? 5 : 10);
+      const xa = i % 2 === 0 ? -6 : 6;
+      this.addMover(3.4, 0.8, driftD,
+        new THREE.Vector3(xa, y, dz), new THREE.Vector3(-xa, y, dz),
+        driftColors[i]!, i % 2 === 0 ? 0.9 : 1.1, i * 1.5, `Drift Pad ${i + 1}`);
+      driftEdge = dz + driftD / 2;
+      lastDriftZ = dz;
+    }
+    const liftD = along(3.4);
+    const liftZ = hopCenter(lastDriftZ, driftD, liftD);
+    this.addMover(3.4, 0.8, liftD,
+      new THREE.Vector3(0, ay + 12, liftZ), new THREE.Vector3(0, ay + 19, liftZ),
+      0x26a69a, 0.7, 1, 'Space Lift');
+    const beltR = 3.4;
+    const beltAz = hopCenter(liftZ, liftD, astAlong(beltR));
+    const beltAy = ay + 21;
+    this.addAsteroid(0, beltAy, beltAz, beltR, 'Belt Asteroid');
+    this.addCheckpoint(0, beltAy + 0.1, beltAz, 'Belt Rider');
 
-    const fy = ay + 21, fz = az + 29;
+    const fy = beltAy, fz = beltAz;
     const more = appendClimbLevels(this.climbApi(), fy + 0.15, fz + 10, this.checkpoints.length);
+    this.addErrorBandDecor();
     this.endingPos.set(more.x, -80, more.z);
     this.endingRing = new THREE.Mesh(new THREE.TorusGeometry(3, 0.3, 14, 48),
       new THREE.MeshStandardMaterial({ color: 0xffeb3b, emissive: 0xd9a400, emissiveIntensity: 1.4, roughness: 0.25 }));
