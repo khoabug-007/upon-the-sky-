@@ -115,10 +115,10 @@ const SPACE_STEP = 6.5;
 const JUMP_GAP = 2.2;
 /** Half-width of paired slider travel; keeps worst-case 3D hop inside walk reach. */
 const SLIDER_X = 2.2;
-/** Along-travel walkway length vs the pre-stretch course (half of the last live 4/3 scale). */
-const PATH_LEN = 2 / 3;
-/** Extra authored pieces vs the doubled run (half of the last live 2/3 scale). Hop holes stay JUMP_GAP. */
-const COURSE_RUN = 1 / 3;
+/** Along-travel walkway length: 3× the previous live scale (2/3). */
+const PATH_LEN = 2;
+/** Extra authored pieces: 3× the previous live scale (1/3). Hop holes stay JUMP_GAP. */
+const COURSE_RUN = 1;
 const runCount = (n: number) => Math.max(1, Math.round(n * COURSE_RUN));
 const along = (d: number) => d * PATH_LEN;
 const hopCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>

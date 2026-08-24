@@ -16,10 +16,10 @@ const REBOUND_COUNT = 50;
 /** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
 const WALK_HOP_GAP = 2.2;
 const PAD = 3.1;
-/** Along-travel pad length vs the pre-stretch course (half of the last live 4/3 scale). */
-const PATH_LEN = 2 / 3;
-/** Course piece count vs the doubled run (half of the last live 2/3 scale). Jump gaps stay WALK_HOP_GAP. */
-const COURSE_RUN = 1 / 3;
+/** Along-travel pad length: 3× the previous live scale (2/3). */
+const PATH_LEN = 2;
+/** Course piece count: 3× the previous live scale (1/3). Jump gaps stay WALK_HOP_GAP. */
+const COURSE_RUN = 1;
 const runCount = (n: number) => Math.max(1, Math.round(n * COURSE_RUN));
 
 /** Walk-speed hang time after a bounce; center-to-center so the next pad is just in reach. */
