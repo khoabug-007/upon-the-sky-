@@ -6,6 +6,14 @@ const JUMP_HEIGHT_SAFE = 1.55;
 const SPACE_JUMP_HEIGHT_SAFE = 7.0;
 
 const SPACE_BAND_Y = 88;
+const WALK_SPEED = 5.5;
+/** Copied from PlayerController trampoline bounce. */
+const TRAMP_BOUNCE_VEL = 17.5;
+const GRAVITY_MAG = 24;
+const SPACE_GRAVITY_MAG = 7.5;
+const REBOUND_R = 1.08;
+const REBOUND_ROWS = 5;
+const REBOUND_COLS = 10;
 /** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
 const WALK_HOP_GAP = 2.2;
 const PAD = 3.1;
@@ -14,6 +22,12 @@ const PATH_LEN = 4 / 3;
 /** Course piece count vs the doubled run (now 1/3 of that). Jump gaps stay WALK_HOP_GAP. */
 const COURSE_RUN = 2 / 3;
 const runCount = (n: number) => Math.max(1, Math.round(n * COURSE_RUN));
+
+/** Walk-speed hang time after a bounce; center-to-center so the next pad is just in reach. */
+function bounceStep(py: number): number {
+  const g = py > SPACE_BAND_Y ? SPACE_GRAVITY_MAG : GRAVITY_MAG;
+  return WALK_SPEED * ((2 * TRAMP_BOUNCE_VEL) / g);
+}
 
 /** Obstacle segments to append after the hand-authored course (same length as before). */
 export const TARGET_LEVELS = 100;
@@ -89,7 +103,6 @@ export function appendClimbLevels(
   let dz = 1;
   let placed = already;
   let wait = 0;
-  let reboundBudget = 50;
   const extra = Math.max(0, TARGET_LEVELS - already);
 
   for (let i = 0; i < extra; i++) {
@@ -126,10 +139,9 @@ export function appendClimbLevels(
       } else if (next <= 59) {
         ({ x, y, z } = reverseSpin(api, x, y, z, dx, dz, lateColor, label, lateFlag));
       } else {
-        const leftLevels = 68 - next;
-        const n = next === 67 ? reboundBudget : Math.max(1, Math.round(reboundBudget / leftLevels));
-        reboundBudget -= n;
-        ({ x, y, z } = reboundSpiral(api, x, y, z, dx, dz, lateColor, label, next, lateFlag, n));
+        ({ x, y, z } = reboundRows(api, x, y, z, dx, dz, lateColor));
+        placed = 67;
+        continue;
       }
       placed = next;
       continue;
@@ -298,55 +310,48 @@ function reverseSpin(
   return { x: ex, y, z: ez };
 }
 
-/** Levels 60–67: no spinning bars; pink rebounders launch you up the spiral. */
-function reboundSpiral(
+/** Levels 60–67: 5×10 pink rebounders, spaced at a walking bounce so each pad reaches the next. */
+function reboundRows(
   api: ClimbApi, ox: number, y: number, z: number,
-  dx: number, dz: number, color: number, label: string, seed: number, flag: boolean,
-  rebounders: number
+  dx: number, dz: number, color: number
 ): { x: number; y: number; z: number } {
-  const pads = runCount(5);
-  const rise = 1.48;
-  const R = 3.0;
-  const padAcross = 2.55;
-  const padAlong = padAcross * PATH_LEN;
-  const step = padAlong + WALK_HOP_GAP;
-  const dAng = 0.7;
-  const spots: Array<{ x: number; y: number; z: number }> = [];
-  let lastX = ox, lastY = y, lastZ = z;
-  for (let i = 0; i < pads; i++) {
-    const ang = seed * 0.35 + i * dAng;
-    const px = ox + dx * (i * step) + Math.cos(ang) * R;
-    const pz = z + dz * (i * step) + Math.sin(ang) * R;
-    const py = y + i * rise;
-    const { w, d } = padDimsAlongTravel(dx, dz, padAcross, padAlong);
-    api.addBox(w, 0.7, d, px, py, pz, color, { name: `${label} Coil ${i + 1}` });
-    spots.push({ x: px, y: py, z: pz });
-    lastX = px; lastY = py; lastZ = pz;
+  const gap = bounceStep(y);
+  const rowPitch = REBOUND_R * 2 + WALK_HOP_GAP + 0.35;
+  const rise = 0.42;
+  const startAlong = 6;
+  const startHalf = 2.6;
+  const { w: sw, d: sd } = padDimsAlongTravel(dx, dz, 5.2, 5.2);
+  const sx = ox + dx * startAlong;
+  const sz = z + dz * startAlong;
+  api.addBox(sw, 1, sd, sx, y, sz, color, { name: 'Level 60' });
+  api.addSign(
+    ['Walk onto a pink pad.', 'A bounce carries you to the next.'],
+    sx - dz * 5.5, y + 3.2, sz + dx * 5.5, 0.75
+  );
+  flagAt(api, sx, y + 0.5, sz, 'Level 60', true);
+
+  const firstAlong = startAlong + startHalf + WALK_HOP_GAP + REBOUND_R;
+  let n = 0;
+  for (let row = 0; row < REBOUND_ROWS; row++) {
+    const side = sideOf(dx, dz, (row - (REBOUND_ROWS - 1) / 2) * rowPitch);
+    for (let col = 0; col < REBOUND_COLS; col++) {
+      n += 1;
+      const along = firstAlong + col * gap;
+      const py = y + col * rise;
+      const px = ox + dx * along + side.x;
+      const pz = z + dz * along + side.z;
+      api.addTrampoline(px, py, pz, REBOUND_R, `Rebounder ${n}`);
+    }
   }
 
-  const n = Math.max(0, rebounders);
-  for (let i = 0; i < n; i++) {
-    const u = n === 1 ? 0 : (i / n) * Math.max(0, spots.length - 1.08);
-    const i0 = Math.min(spots.length - 1, Math.floor(u));
-    const i1 = Math.min(spots.length - 1, i0 + 1);
-    const f = u - i0;
-    const a = spots[i0]!;
-    const b = spots[i1]!;
-    const px = a.x + (b.x - a.x) * f;
-    const py = a.y + (b.y - a.y) * f;
-    const pz = a.z + (b.z - a.z) * f;
-    const side = sideOf(dx, dz, i % 2 ? 1.15 : -1.15);
-    api.addTrampoline(
-      px + side.x,
-      py + 0.02,
-      pz + side.z,
-      1.08,
-      `${label} Rebounder ${i + 1}`
-    );
-  }
-
-  flagAt(api, lastX, lastY + 0.5, lastZ, label, flag);
-  return { x: lastX, y: lastY, z: lastZ };
+  const endAlong = firstAlong + REBOUND_COLS * gap;
+  const endY = y + (REBOUND_COLS - 1) * rise;
+  const ex = ox + dx * endAlong;
+  const ez = z + dz * endAlong;
+  const { w: ew, d: ed } = padDimsAlongTravel(dx, dz, 6.2, 6.2);
+  api.addBox(ew, 1, ed, ex, endY, ez, color, { name: 'Level 67' });
+  flagAt(api, ex, endY + 0.5, ez, 'Level 67', true);
+  return { x: ex, y: endY, z: ez };
 }
 
 function placeComingSoon(
