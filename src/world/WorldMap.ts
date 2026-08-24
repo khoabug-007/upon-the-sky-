@@ -46,6 +46,19 @@ export interface Checkpoint {
   label: string;
 }
 
+interface FlickerPad {
+  mesh: THREE.Mesh;
+  collider: BoxCollider;
+  goneUntil: number;
+}
+
+interface WarpWatch {
+  group: THREE.Group;
+  phase: number;
+  base: number;
+  mats: THREE.MeshStandardMaterial[];
+}
+
 export interface Prop {
   id: number;
   mesh: THREE.Mesh;
@@ -118,6 +131,44 @@ function makeSign(text: string[], scale = 1): THREE.Sprite {
   return sprite;
 }
 
+function makeErrorWorldSign(): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 320;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = 'rgba(18, 12, 28, 0.92)';
+  ctx.beginPath(); ctx.roundRect(16, 16, 992, 288, 28); ctx.fill();
+  ctx.strokeStyle = '#c4a35a'; ctx.lineWidth = 10; ctx.stroke();
+  ctx.fillStyle = '#f4ead2';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '700 92px Cinzel, "Times New Roman", serif';
+  ctx.fillText('The Error World', 512, 160);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvas), transparent: true
+  }));
+  sprite.scale.set(22, 6.9, 1);
+  return sprite;
+}
+
+function warpGold(hex: number): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({
+    color: hex, metalness: 0.82, roughness: 0.28, emissive: hex, emissiveIntensity: 0.08
+  });
+  m.userData.warped = true;
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.vertexShader = `uniform float uTime;\n${shader.vertexShader}`.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+      float w = 0.10 + 0.08 * sin(uTime * 0.8 + transformed.y * 4.0);
+      transformed.x += sin(transformed.y * 5.2 + uTime * 1.7) * w;
+      transformed.z += cos(transformed.x * 4.6 + uTime * 1.25) * w;
+      transformed.y += sin(transformed.z * 3.8 + uTime * 0.95) * (w * 0.7);`
+    );
+    m.userData.shader = shader;
+  };
+  return m;
+}
+
 export class WorldMap {
   colliders: BoxCollider[] = [];
   movers: Mover[] = [];
@@ -136,6 +187,10 @@ export class WorldMap {
   private endingRing!: THREE.Mesh;
   private time = 0;
   private ballSpawnWait = 1;
+  private flickerPads: FlickerPad[] = [];
+  private flickerPickAt = 4;
+  private warpWatches: WarpWatch[] = [];
+  private errorRifts: THREE.Mesh[] = [];
 
   constructor(private scene: THREE.Scene) {
     this.build();
@@ -148,7 +203,7 @@ export class WorldMap {
   private addBox(
     w: number, h: number, d: number,
     x: number, y: number, z: number,
-    color: number, opts: { bouncy?: boolean; noShadow?: boolean; name?: string } = {}
+    color: number, opts: { bouncy?: boolean; noShadow?: boolean; name?: string; flicker?: boolean } = {}
   ): THREE.Mesh {
     const name = opts.name ?? 'Block';
     if (isSteelPad(color) && !opts.bouncy && !isLiftName(name)) {
@@ -165,6 +220,9 @@ export class WorldMap {
       bouncy: opts.bouncy,
       name
     });
+    if (opts.flicker) {
+      this.flickerPads.push({ mesh, collider: this.colliders[this.colliders.length - 1]!, goneUntil: 0 });
+    }
     return mesh;
   }
 
@@ -670,6 +728,199 @@ export class WorldMap {
     this.scene.add(s);
   }
 
+  /** Level 50 plaza: title, vanishing outer tiles, rifts, oversized warped watches. */
+  private addErrorWorld(x: number, y: number, z: number, dx: number, dz: number): void {
+    const tile = 4.2;
+    const n = 5;
+    const h = 1;
+    for (let ix = 0; ix < n; ix++) {
+      for (let iz = 0; iz < n; iz++) {
+        const px = x + (ix - 2) * tile;
+        const pz = z + (iz - 2) * tile;
+        const inner = ix >= 1 && ix <= 3 && iz >= 1 && iz <= 3;
+        if (inner) {
+          this.addBox(tile, h, tile, px, y, pz, 0x3a3a36, { name: 'Level 50 Plaza' });
+        } else {
+          const hue = (ix * 5 + iz) % 2 === 0 ? 0x2a2238 : 0x1c2430;
+          this.addBox(tile, h, tile, px, y, pz, hue, { name: 'Error World', flicker: true });
+        }
+      }
+    }
+
+    const title = makeErrorWorldSign();
+    const side = { x: -dz, z: dx };
+    title.position.set(x + side.x * 0.4, y + 9.2, z + side.z * 0.4);
+    this.scene.add(title);
+
+    this.addErrorRifts(x, y, z, dx, dz);
+    this.addErrorWatches(x, y, z, dx, dz);
+  }
+
+  private addErrorRifts(x: number, y: number, z: number, dx: number, dz: number): void {
+    const riftMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uA: { value: new THREE.Color(0x6b4cff) },
+        uB: { value: new THREE.Color(0x19e3c2) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uA;
+        uniform vec3 uB;
+        varying vec2 vUv;
+        void main() {
+          vec2 p = vUv * 2.0 - 1.0;
+          float r = length(p);
+          float a = atan(p.y, p.x);
+          float swirl = sin(a * 5.0 + uTime * 1.4 - r * 8.0);
+          float ring = smoothstep(1.0, 0.12, r) * smoothstep(0.02, 0.22, r);
+          vec3 col = mix(uA, uB, 0.5 + 0.5 * swirl);
+          gl_FragColor = vec4(col, ring * (0.35 + 0.25 * swirl));
+        }
+      `
+    });
+    const doorMat = new THREE.MeshStandardMaterial({
+      color: 0x1a1424, metalness: 0.55, roughness: 0.4, emissive: 0x2a1850, emissiveIntensity: 0.35
+    });
+
+    for (let i = 0; i < 14; i++) {
+      const ang = (i / 14) * Math.PI * 2;
+      const rad = 28 + (i % 4) * 7;
+      const px = x + Math.cos(ang) * rad + dx * ((i % 3) - 1) * 4;
+      const pz = z + Math.sin(ang) * rad + dz * ((i % 3) - 1) * 4;
+      const py = y + 6 + (i % 5) * 3.2;
+      const g = new THREE.Group();
+      g.position.set(px, py, pz);
+      g.lookAt(x, y + 4, z);
+
+      const postL = new THREE.Mesh(new THREE.BoxGeometry(0.45, 7.2, 0.45), doorMat);
+      const postR = postL.clone();
+      postL.position.set(-2.2, 0, 0);
+      postR.position.set(2.2, 0, 0);
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(5.0, 0.5, 0.5), doorMat);
+      lintel.position.y = 3.5;
+      const rift = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 6.4, 1, 1), riftMat.clone());
+      rift.position.z = -0.05;
+      this.errorRifts.push(rift);
+      g.add(postL, postR, lintel, rift);
+      this.scene.add(g);
+    }
+  }
+
+  private addErrorWatches(x: number, y: number, z: number, dx: number, dz: number): void {
+    const faces: Array<[number, number]> = [
+      [3, 0], [6, 15], [10, 10], [11, 55], [4, 44], [12, 0], [8, 20], [1, 37]
+    ];
+    for (let i = 0; i < faces.length; i++) {
+      const [hour, minute] = faces[i];
+      const ang = (i / faces.length) * Math.PI * 2 + 0.4;
+      const rad = 22 + (i % 3) * 6;
+      const px = x - dx * 6 + Math.cos(ang) * rad;
+      const pz = z - dz * 6 + Math.sin(ang) * rad;
+      const py = y + 11 + (i % 4) * 4.5;
+      const watch = this.makePocketWatch(hour, minute);
+      watch.position.set(px, py, pz);
+      const scale = 7.4 + (i % 3) * 2.8;
+      watch.scale.setScalar(scale);
+      watch.lookAt(x, y + 3, z);
+      this.scene.add(watch);
+      const mats: THREE.MeshStandardMaterial[] = [];
+      watch.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m.material) {
+          const mat = m.material as THREE.MeshStandardMaterial;
+          if (mat.userData.warped) mats.push(mat);
+        }
+      });
+      this.warpWatches.push({ group: watch, phase: i * 1.17, base: scale, mats });
+    }
+  }
+
+  private makePocketWatch(hour: number, minute: number): THREE.Group {
+    const gold = warpGold(0xc4a35a);
+    const dark = warpGold(0x3a2a18);
+    const face = new THREE.MeshStandardMaterial({
+      color: 0xf3e6c8, roughness: 0.55, metalness: 0.08, emissive: 0x221810, emissiveIntensity: 0.12
+    });
+    const g = new THREE.Group();
+    const caseR = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.1, 12, 36), gold);
+    caseR.rotation.x = Math.PI / 2;
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.06, 36), face);
+    const back = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.08, 28), dark);
+    back.position.y = -0.06;
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.22, 10), gold);
+    crown.position.set(0, 0, 0.72);
+    crown.rotation.x = Math.PI / 2;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.025, 8, 18), gold);
+    ring.position.set(0, 0, 0.9);
+    const hourA = ((hour % 12) + minute / 60) * (Math.PI * 2 / 12);
+    const minA = (minute / 60) * Math.PI * 2;
+    const hourHand = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.28, 0.03), dark);
+    hourHand.position.set(Math.sin(hourA) * 0.12, 0.05, Math.cos(hourA) * 0.12);
+    hourHand.rotation.y = hourA;
+    const minHand = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.4, 0.025), dark);
+    minHand.position.set(Math.sin(minA) * 0.18, 0.055, Math.cos(minA) * 0.18);
+    minHand.rotation.y = minA;
+    g.add(caseR, disc, back, crown, ring, hourHand, minHand);
+    g.rotation.x = -0.35;
+    return g;
+  }
+
+  private updateFlickerPads(): void {
+    const now = this.time;
+    let gone = 0;
+    for (const p of this.flickerPads) {
+      if (now < p.goneUntil) {
+        gone++;
+        continue;
+      }
+      if (!p.mesh.visible) {
+        p.mesh.visible = true;
+        p.collider.disabled = false;
+      }
+    }
+    if (now < this.flickerPickAt || gone >= 4) return;
+    const ready = this.flickerPads.filter((p) => now >= p.goneUntil);
+    if (!ready.length) return;
+    const pick = ready[Math.floor(Math.random() * ready.length)]!;
+    pick.mesh.visible = false;
+    pick.collider.disabled = true;
+    pick.goneUntil = now + 5;
+    this.flickerPickAt = now + 0.7 + Math.random() * 1.1;
+  }
+
+  private updateErrorDecor(dt: number): void {
+    for (const rift of this.errorRifts) {
+      const mat = rift.material as THREE.ShaderMaterial;
+      if (mat.uniforms?.uTime) mat.uniforms.uTime.value = this.time;
+    }
+    for (const w of this.warpWatches) {
+      const t = this.time + w.phase;
+      w.group.rotation.x = -0.35 + Math.sin(t * 0.65) * 0.55 + Math.sin(t * 1.31) * 0.22;
+      w.group.rotation.z = Math.sin(t * 0.47) * 0.7 + Math.cos(t * 1.07) * 0.28;
+      w.group.rotation.y += 0.22 * dt;
+      const sx = 1 + Math.sin(t * 0.9) * 0.18;
+      const sy = 1 + Math.cos(t * 1.15) * 0.22;
+      const sz = 1 + Math.sin(t * 0.72 + 1.4) * 0.16;
+      const breathe = 0.92 + 0.08 * Math.sin(t * 0.4);
+      w.group.scale.set(w.base * breathe * sx, w.base * breathe * sy, w.base * breathe * sz);
+      for (const m of w.mats) {
+        const sh = m.userData.shader as { uniforms: { uTime: { value: number } } } | undefined;
+        if (sh) sh.uniforms.uTime.value = t;
+      }
+    }
+  }
+
   private climbApi(): ClimbApi {
     return {
       addBox: this.addBox.bind(this),
@@ -686,7 +937,8 @@ export class WorldMap {
       addVehicleSpawn: (x, y, z, heading) => {
         this.vehicleSpawn = { pos: new THREE.Vector3(x, y, z), heading };
       },
-      addOrientedSlab: this.addOrientedSlab.bind(this)
+      addOrientedSlab: this.addOrientedSlab.bind(this),
+      addErrorWorld: this.addErrorWorld.bind(this)
     };
   }
 
@@ -938,6 +1190,8 @@ export class WorldMap {
 
     this.updateHazardBalls(dt);
     this.updateThrowSwitches();
+    this.updateFlickerPads();
+    this.updateErrorDecor(dt);
 
     for (const cl of this.clouds) {
       cl.children.forEach((b, i) => {

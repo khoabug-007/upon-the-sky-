@@ -61,6 +61,7 @@ export interface ClimbApi {
     x: number, y: number, z: number,
     rotY: number, color: number, name: string
   ): THREE.Mesh;
+  addErrorWorld(x: number, y: number, z: number, dx: number, dz: number): void;
 }
 
 const PALETTE = [0xb5651d, 0x9c6b30, 0xcfa15a, 0x7e57c2, 0x5c6bc0, 0x26a69a, 0xeceff1, 0xffd54f];
@@ -209,7 +210,7 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   api.addOrientedSlab(roadW, slabH, 16, lastX + ux * 10, lastY, lastZ + uz * 10, exitRot, 0x3a3a36, 'Convoy Road');
   const endX = lastX + ux * 22;
   const endZ = lastZ + uz * 22;
-  api.addBox(22, slabH, 22, endX, lastY, endZ, 0x3a3a36, { name: 'Level 50 Plaza' });
+  api.addErrorWorld(endX, lastY, endZ, -ux, -uz);
   api.addCheckpoint(endX, lastY + 0.5, endZ, 'Level 50');
   return { x: endX, y: lastY, z: endZ, dx: -ux, dz: -uz };
 }

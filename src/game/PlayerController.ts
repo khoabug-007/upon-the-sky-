@@ -99,6 +99,11 @@ export class PlayerController {
       return;
     }
 
+    if (this.groundCollider?.disabled) {
+      this.onGround = false;
+      this.groundCollider = null;
+    }
+
     if (this.moveLock > 0) this.moveLock -= dt;
 
     if (this.endingMode) {
