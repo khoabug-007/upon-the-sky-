@@ -5,7 +5,7 @@ import type { WorldMap } from '../world/WorldMap';
 
 export type RiderId = 'me' | string;
 
-/** Seats in the cab / bay. After the mesh yaw, the windshield is local +Z. */
+/** Seats behind the hood. After the mesh yaw, the hood / windshield is local +Z. */
 const SEAT_LOCAL: THREE.Vector3[] = [
   new THREE.Vector3(-0.28, 1.06, 1.85),
   new THREE.Vector3(0.28, 1.06, 1.85),
@@ -144,8 +144,9 @@ export class Transport {
     this.group.rotation.x = this.pitch;
     const spin = (this.speed / WHEEL_R) * dt;
     for (const w of this.wheels) {
-      w.rotation.z += spin;
       w.rotation.y = w.userData.front ? this.steer : 0;
+      const tire = w.children[0];
+      if (tire) tire.rotation.x += spin;
     }
   }
 
@@ -270,8 +271,8 @@ export class Transport {
       const size = box.getSize(new THREE.Vector3());
       const longest = Math.max(size.x, size.z, 0.01);
       root.scale.setScalar(6.4 / longest);
-      // Mesh is modeled along +X (cab at +X). Yaw cab to local +Z so W drives toward the windshield.
-      if (size.x >= size.z) root.rotation.y = -Math.PI / 2;
+      // Length is +X. The hood sits at -X (the tall canopy is the rear). Yaw hood to local +Z.
+      if (size.x >= size.z) root.rotation.y = Math.PI / 2;
       root.updateMatrixWorld(true);
       box.setFromObject(root);
       root.position.y -= box.min.y;
@@ -314,13 +315,14 @@ export class Transport {
       const bb = geo.boundingBox!;
       const center = bb.getCenter(new THREE.Vector3());
       geo.translate(-center.x, -center.y, -center.z);
+      // Source axle is +Z. Turn it to +X so the tire rolls with rotation.x.
+      geo.rotateY(Math.PI / 2);
       const mesh = new THREE.Mesh(geo, hull.material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       const pivot = new THREE.Group();
-      pivot.rotation.order = 'YZX';
       pivot.position.copy(center);
-      pivot.userData.front = slot <= 2;
+      pivot.userData.front = slot >= 3;
       pivot.add(mesh);
       parent.add(pivot);
       this.wheels.push(pivot);
