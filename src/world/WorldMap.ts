@@ -61,6 +61,7 @@ interface ConvoySeg {
   mesh: THREE.Mesh;
   collider: BoxCollider;
   crates: ConvoyCrate[];
+  extras: BoxCollider[];
   homeY: number;
   falling: boolean;
   fallVel: number;
@@ -235,6 +236,11 @@ export class WorldMap {
   private convoyNext = CONVOY_SKIP_START;
   private crateGeo = new THREE.BoxGeometry(CRATE_SIZE, CRATE_H, CRATE_SIZE);
   private crateMat = mat(0xb5651d);
+  private roadBit = new THREE.BoxGeometry(1, 1, 1);
+  private curbMat = new THREE.MeshStandardMaterial({ color: 0x6a645c, roughness: 0.92 });
+  private laneMat = new THREE.MeshStandardMaterial({
+    color: 0xe6c84a, roughness: 0.62, emissive: 0x4a3800, emissiveIntensity: 0.07
+  });
   private warpWatches: WarpWatch[] = [];
   private errorRifts: THREE.Mesh[] = [];
   private spaceFloaters: SpaceFloater[] = [];
@@ -315,12 +321,68 @@ export class WorldMap {
         mesh,
         collider: this.colliders[this.colliders.length - 1]!,
         crates: [],
+        extras: [],
         homeY: y,
         falling: false,
         fallVel: 0
       });
+      this.dressConvoyRoad(mesh, w, h, d, x, y, z, rotY);
     }
     return mesh;
+  }
+
+  /** Concrete curbs + a painted center line so the highway reads as one continuous road. */
+  private dressConvoyRoad(
+    mesh: THREE.Mesh, w: number, h: number, d: number,
+    x: number, y: number, z: number, rotY: number
+  ): void {
+    const host = this.convoySegs[this.convoySegs.length - 1];
+    if (!host) return;
+    const curbW = 0.42;
+    const curbH = 1.12;
+    const edge = w / 2 - curbW * 0.45;
+    const addCurb = (side: number) => {
+      const curb = new THREE.Mesh(this.roadBit, this.curbMat);
+      curb.scale.set(curbW, curbH, d);
+      curb.position.set(side * edge, (h + curbH) * 0.5 - 0.02, 0);
+      curb.castShadow = true;
+      curb.receiveShadow = true;
+      mesh.add(curb);
+      const lx = side * edge;
+      const c = Math.cos(rotY), s = Math.sin(rotY);
+      const cx = x + lx * c;
+      const cz = z - lx * s;
+      const hw = curbW / 2, hd = d / 2;
+      const xs = [hw, hw, -hw, -hw];
+      const zs = [hd, -hd, hd, -hd];
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (let i = 0; i < 4; i++) {
+        const wx = cx + xs[i]! * c + zs[i]! * s;
+        const wz = cz - xs[i]! * s + zs[i]! * c;
+        minX = Math.min(minX, wx); maxX = Math.max(maxX, wx);
+        minZ = Math.min(minZ, wz); maxZ = Math.max(maxZ, wz);
+      }
+      const cy = y + h / 2 + curbH / 2;
+      this.colliders.push({
+        min: new THREE.Vector3(minX, cy - curbH / 2, minZ),
+        max: new THREE.Vector3(maxX, cy + curbH / 2, maxZ),
+        name: 'Road Curb',
+        yaw: rotY,
+        cx, cz, halfW: hw, halfD: hd
+      });
+      host.extras.push(this.colliders[this.colliders.length - 1]!);
+    };
+    addCurb(-1);
+    addCurb(1);
+    const dashN = Math.max(2, Math.floor(d / 4.2));
+    const dashLen = Math.min(2.4, d / dashN * 0.55);
+    const gap = d / dashN;
+    for (let i = 0; i < dashN; i++) {
+      const line = new THREE.Mesh(this.roadBit, this.laneMat);
+      line.scale.set(0.16, 0.03, dashLen);
+      line.position.set(0, h * 0.5 + 0.02, -d / 2 + gap * (i + 0.5));
+      mesh.add(line);
+    }
   }
 
   /** Square wood block covering one half of the last convoy slab, leaving a drive lane. */
@@ -1384,6 +1446,7 @@ export class WorldMap {
     s.falling = true;
     s.collider.disabled = true;
     for (const crate of s.crates) crate.collider.disabled = true;
+    for (const extra of s.extras) extra.disabled = true;
   }
 
   private stepConvoyFall(dt: number): void {
@@ -1431,6 +1494,7 @@ export class WorldMap {
       s.mesh.visible = true;
       s.collider.disabled = false;
       for (const crate of s.crates) crate.collider.disabled = false;
+      for (const extra of s.extras) extra.disabled = false;
     }
   }
 

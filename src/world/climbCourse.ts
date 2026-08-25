@@ -188,57 +188,80 @@ function flagAt(api: ClimbApi, x: number, y: number, z: number, label: string, f
   if (flag) api.addCheckpoint(x, y, z, label);
 }
 
-/** Motor pool at Level 17, then a helix road the troop truck can drive to Level 50. */
+/** Motor pool at Level 17, then an expanding spiral the troop truck can drive to Level 50. */
 function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const parkW = 24;
   const parkD = 24;
   const roadW = 16;
-  const slabD = 20 * PATH_LEN;
   const slabH = 1;
-  const R = 40;
-  const steps = runCount(72);
-  const dTheta = 0.30;
-  const rise = 0.42;
+  const r0 = 36;
+  const dTheta = 0.18;
+  const dR = 0.74;
+  const steps = Math.max(28, runCount(58));
+  const rise = 28 / steps;
+  const drdth = dR / dTheta;
+
   api.addBox(parkW, slabH, parkD, 0, y, z, 0x3a3a36, { name: 'Motor Pool' });
   api.addSign(
     ['MOTOR POOL', 'E to drive. Weave past the wood crates.', 'The road falls behind you — one slab a second.'],
     -8.2, y + 3.4, z - 1.5, 0.9
   );
   api.addCheckpoint(0, y + 0.5, z, 'Level 17');
-
-  const connD = 16 * PATH_LEN;
-  const zStart = z + parkD / 2 + slabD * 0.32;
-  const cx = R;
-  const cz = zStart;
-  api.addOrientedSlab(roadW, slabH, connD, 0, y, z + parkD / 2 + connD * 0.44, 0, 0x3a3a36, 'Convoy Road');
   api.addVehicleSpawn(0, y + 0.5, z + 1.2, 0);
 
-  let lastX = 0, lastY = y, lastZ = zStart, lastTx = 0, lastTz = 1;
-  for (let i = 0; i < steps; i++) {
+  const cx = r0;
+  const cz = z + parkD / 2;
+  const pt = (i: number) => {
     const th = -Math.PI / 2 + i * dTheta;
-    const px = cx + R * Math.sin(th);
-    const pz = cz + R * Math.cos(th);
-    const py = y + i * rise;
-    const tx = R * Math.cos(th);
-    const tz = -R * Math.sin(th);
-    const rotY = Math.atan2(tx, tz);
-    api.addOrientedSlab(roadW, slabH, slabD, px, py, pz, rotY, 0x3a3a36, 'Convoy Road');
-    if (i % 2 === 1) api.addConvoyCrate(i % 4 === 1 ? 1 : -1);
-    lastX = px; lastY = py; lastZ = pz; lastTx = tx; lastTz = tz;
+    const r = r0 + i * dR;
+    return {
+      x: cx + r * Math.sin(th),
+      y: y + i * rise,
+      z: cz + r * Math.cos(th),
+      tx: r * Math.cos(th) + drdth * Math.sin(th),
+      tz: -r * Math.sin(th) + drdth * Math.cos(th)
+    };
+  };
+
+  let crateSide = 1;
+  const place = (
+    a: { x: number; y: number; z: number },
+    b: { x: number; y: number; z: number },
+    crate: boolean
+  ) => {
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dz);
+    if (len < 0.5) return;
+    api.addOrientedSlab(
+      roadW, slabH, len + 0.5,
+      (a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5,
+      Math.atan2(dx, dz), 0x3a3a36, 'Convoy Road'
+    );
+    if (crate) api.addConvoyCrate(crateSide);
+  };
+
+  const p0 = pt(0);
+  place({ x: 0, y, z: z + 1.5 }, p0, false);
+  let prev = p0;
+  for (let i = 1; i <= steps; i++) {
+    const p = pt(i);
+    const crate = i % 2 === 0;
+    place(prev, p, crate);
+    if (crate) crateSide *= -1;
+    prev = p;
   }
 
-  const tan = Math.hypot(lastTx, lastTz) || 1;
-  const ux = lastTx / tan;
-  const uz = lastTz / tan;
-  const exitRot = Math.atan2(lastTx, lastTz);
-  const exitLead = 10 * PATH_LEN;
-  const exitRun = 22 * COURSE_RUN;
-  api.addOrientedSlab(roadW, slabH, connD, lastX + ux * exitLead, lastY, lastZ + uz * exitLead, exitRot, 0x3a3a36, 'Convoy Road');
-  const endX = lastX + ux * exitRun;
-  const endZ = lastZ + uz * exitRun;
-  api.addErrorWorld(endX, lastY, endZ, -ux, -uz);
-  api.addCheckpoint(endX, lastY + 0.5, endZ, 'Level 50');
-  return { x: endX, y: lastY, z: endZ, dx: -ux, dz: -uz };
+  const tan = Math.hypot(prev.tx, prev.tz) || 1;
+  const ux = prev.tx / tan;
+  const uz = prev.tz / tan;
+  const exitLen = 16;
+  place(prev, { x: prev.x + ux * exitLen, y: prev.y, z: prev.z + uz * exitLen }, false);
+  const endX = prev.x + ux * 24;
+  const endZ = prev.z + uz * 24;
+  api.addErrorWorld(endX, prev.y, endZ, -ux, -uz);
+  api.addCheckpoint(endX, prev.y + 0.5, endZ, 'Level 50');
+  return { x: endX, y: prev.y, z: endZ, dx: -ux, dz: -uz };
 }
 
 function sideOf(dx: number, dz: number, s: number): { x: number; z: number } {
