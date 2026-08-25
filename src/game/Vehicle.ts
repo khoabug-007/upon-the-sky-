@@ -151,20 +151,48 @@ export class Transport {
   }
 
   private blocked(x: number, z: number, world: WorldMap): boolean {
-    const minX = x - this.half.x, maxX = x + this.half.x;
     const minY = this.group.position.y + 0.4, maxY = this.group.position.y + 2.1;
-    const minZ = z - this.half.z, maxZ = z + this.half.z;
+    const hx = this.half.x * 0.92;
+    const hz = this.half.z * 0.92;
+    const ch = Math.cos(this.heading);
+    const sh = Math.sin(this.heading);
+    const local: Array<[number, number]> = [
+      [0, 0], [hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz], [0, hz], [0, -hz], [hx, 0], [-hx, 0]
+    ];
     for (const c of world.colliders) {
       if (c.disabled) continue;
       if (c.name && FLOOR_NAMES.has(c.name)) continue;
       const boxH = c.max.y - c.min.y;
       if (boxH < 1.05) continue;
-      if (maxX <= c.min.x || minX >= c.max.x) continue;
       if (maxY <= c.min.y || minY >= c.max.y) continue;
+      if (c.yaw !== undefined) {
+        let hit = false;
+        for (const [lx, lz] of local) {
+          const wx = x + lx * ch + lz * sh;
+          const wz = z - lx * sh + lz * ch;
+          if (world.containsXZ(c, wx, wz)) {
+            hit = true;
+            break;
+          }
+        }
+        if (hit) return true;
+        continue;
+      }
+      const minX = x - this.half.x, maxX = x + this.half.x;
+      const minZ = z - this.half.z, maxZ = z + this.half.z;
+      if (maxX <= c.min.x || minX >= c.max.x) continue;
       if (maxZ <= c.min.z || minZ >= c.max.z) continue;
       return true;
     }
     return false;
+  }
+
+  /** Keep an empty truck on (or falling off) the road when nobody is driving. */
+  settle(dt: number, world: WorldMap): void {
+    this._fwd.set(Math.sin(this.heading), 0, Math.cos(this.heading));
+    this.snapFloor(dt, world);
+    this.alignToRoad(world);
+    this.group.rotation.x = this.pitch;
   }
 
   private snapFloor(dt: number, world: WorldMap): void {

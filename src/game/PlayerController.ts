@@ -278,6 +278,16 @@ export class PlayerController {
         // Higher pad that only the head/torso reaches (clouds/blocks stacked 1.5m, player ~1.7m).
         // Side-ejecting here is what flung players off obstacle 7.
         if (this.pos.y < c.min.y) continue;
+        if (c.yaw !== undefined) {
+          const pushed = world.pushCircleFromOriented(c, this.pos.x, this.pos.z, this.radius);
+          if (pushed) {
+            this.pos.x = pushed.x;
+            this.pos.z = pushed.z;
+            this.vel.x = 0;
+            this.vel.z = 0;
+          }
+          continue;
+        }
         if (axis === 'x') {
           this.pos.x = amount > 0 ? c.min.x - this.radius : c.max.x + this.radius;
           this.vel.x = 0;

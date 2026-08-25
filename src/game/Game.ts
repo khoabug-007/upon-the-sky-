@@ -688,6 +688,14 @@ export class Game {
     if (mySeat >= 0) {
       if (mySeat === 0) this.vehicle.updateDrive(dt, this.input, this.world);
       this.controller.pos.copy(this.vehicle.seatWorld(mySeat));
+    } else {
+      this.vehicle.settle(dt, this.world);
+      this.controller.update(dt, this.input, this.cam, this.world);
+    }
+    if (this.world.updateConvoyCollapse(dt, this.vehicle.group.position, mySeat >= 0)) {
+      this.hud.toast('The road is falling behind you. Drive!', 2600);
+    }
+    if (mySeat >= 0) {
       if (this.vehicle.fellOff()) {
         this.vehicle.detachRider(this.character.group, this.scene);
         this.vehicle.exit('me');
@@ -695,15 +703,16 @@ export class Game {
         this.character.group.rotation.y = this.controller.facing;
         this.cam.dist = 6.5;
         this.vehicle.respawn();
+        this.world.resetConvoyRoad();
         this.hud.toast('The truck went over. A new one is waiting at the motor pool.', 2800);
       } else {
         this.controller.facing = this.vehicle.heading;
         this.controller.vel.set(0, 0, 0);
         this.controller.onGround = true;
       }
-    } else {
-      this.controller.update(dt, this.input, this.cam, this.world);
-      if (this.vehicle.fellOff()) this.vehicle.respawn();
+    } else if (this.vehicle.fellOff()) {
+      this.vehicle.respawn();
+      this.world.resetConvoyRoad();
     }
     this.checkHazardBalls();
 

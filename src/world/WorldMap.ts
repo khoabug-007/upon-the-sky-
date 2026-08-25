@@ -52,6 +52,27 @@ interface FlickerPad {
   goneUntil: number;
 }
 
+interface ConvoyCrate {
+  mesh: THREE.Mesh;
+  collider: BoxCollider;
+}
+
+interface ConvoySeg {
+  mesh: THREE.Mesh;
+  collider: BoxCollider;
+  crates: ConvoyCrate[];
+  homeY: number;
+  falling: boolean;
+  fallVel: number;
+}
+
+const CRATE_SIZE = 8;
+const CRATE_H = 3.6;
+const CONVOY_DROP_EVERY = 1;
+const CONVOY_KEEP_END = 2;
+const CONVOY_SKIP_START = 1;
+const CONVOY_ARM_DIST = 8;
+
 interface WarpWatch {
   group: THREE.Group;
   phase: number;
@@ -204,6 +225,12 @@ export class WorldMap {
   private ballSpawnWait = 1;
   private flickerPads: FlickerPad[] = [];
   private flickerPickAt = 4;
+  private convoySegs: ConvoySeg[] = [];
+  private convoyArmed = false;
+  private convoyDropAcc = 0;
+  private convoyNext = CONVOY_SKIP_START;
+  private crateGeo = new THREE.BoxGeometry(CRATE_SIZE, CRATE_H, CRATE_SIZE);
+  private crateMat = mat(0xb5651d);
   private warpWatches: WarpWatch[] = [];
   private errorRifts: THREE.Mesh[] = [];
   private instancedWatchMats: THREE.MeshStandardMaterial[] = [];
@@ -280,7 +307,106 @@ export class WorldMap {
       halfW: hw,
       halfD: hd
     });
+    if (name === 'Convoy Road') {
+      this.convoySegs.push({
+        mesh,
+        collider: this.colliders[this.colliders.length - 1]!,
+        crates: [],
+        homeY: y,
+        falling: false,
+        fallVel: 0
+      });
+    }
     return mesh;
+  }
+
+  /** Square wood block covering one half of the last convoy slab, leaving a drive lane. */
+  private addConvoyCrate(side: number): void {
+    const host = this.convoySegs[this.convoySegs.length - 1];
+    if (!host || host.collider.halfW === undefined || host.collider.yaw === undefined) return;
+    const yaw = host.collider.yaw;
+    const roadHalf = host.collider.halfW;
+    const crateHalf = CRATE_SIZE / 2;
+    const across = Math.sign(side || 1) * (roadHalf - crateHalf);
+    const mesh = new THREE.Mesh(this.crateGeo, this.crateMat);
+    mesh.name = 'Wood Crate';
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.position.set(across, (CRATE_H + (host.collider.max.y - host.collider.min.y)) / 2, 0);
+    host.mesh.add(mesh);
+    host.mesh.updateMatrixWorld(true);
+    const wp = new THREE.Vector3();
+    mesh.getWorldPosition(wp);
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    const xs = [crateHalf, crateHalf, -crateHalf, -crateHalf];
+    const zs = [crateHalf, -crateHalf, crateHalf, -crateHalf];
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < 4; i++) {
+      const wx = wp.x + xs[i]! * c + zs[i]! * s;
+      const wz = wp.z - xs[i]! * s + zs[i]! * c;
+      minX = Math.min(minX, wx); maxX = Math.max(maxX, wx);
+      minZ = Math.min(minZ, wz); maxZ = Math.max(maxZ, wz);
+    }
+    this.colliders.push({
+      min: new THREE.Vector3(minX, wp.y - CRATE_H / 2, minZ),
+      max: new THREE.Vector3(maxX, wp.y + CRATE_H / 2, maxZ),
+      name: 'Wood Crate',
+      yaw,
+      cx: wp.x,
+      cz: wp.z,
+      halfW: crateHalf,
+      halfD: crateHalf
+    });
+    host.crates.push({ mesh, collider: this.colliders[this.colliders.length - 1]! });
+  }
+
+  /**
+   * Push a circle out of an oriented box in XZ. Returns the new center, or null if no overlap.
+   */
+  pushCircleFromOriented(
+    c: BoxCollider, x: number, z: number, radius: number
+  ): { x: number; z: number } | null {
+    if (c.yaw === undefined || c.cx === undefined || c.cz === undefined
+      || c.halfW === undefined || c.halfD === undefined) {
+      return null;
+    }
+    const dx = x - c.cx;
+    const dz = z - c.cz;
+    const cos = Math.cos(c.yaw);
+    const sin = Math.sin(c.yaw);
+    const lx = dx * cos - dz * sin;
+    const lz = dx * sin + dz * cos;
+    const hw = c.halfW;
+    const hd = c.halfD;
+    const closestX = THREE.MathUtils.clamp(lx, -hw, hw);
+    const closestZ = THREE.MathUtils.clamp(lz, -hd, hd);
+    const ox = lx - closestX;
+    const oz = lz - closestZ;
+    const inside = Math.abs(lx) <= hw && Math.abs(lz) <= hd;
+    let nlx: number;
+    let nlz: number;
+    if (inside) {
+      const px = hw - Math.abs(lx);
+      const pz = hd - Math.abs(lz);
+      if (px < pz) {
+        nlx = (lx >= 0 ? 1 : -1) * (hw + radius);
+        nlz = lz;
+      } else {
+        nlx = lx;
+        nlz = (lz >= 0 ? 1 : -1) * (hd + radius);
+      }
+    } else {
+      const d2 = ox * ox + oz * oz;
+      if (d2 >= radius * radius || d2 < 1e-10) return null;
+      const d = Math.sqrt(d2);
+      const push = (radius - d) / d;
+      nlx = lx + ox * push;
+      nlz = lz + oz * push;
+    }
+    return {
+      x: c.cx + nlx * cos + nlz * sin,
+      z: c.cz - nlx * sin + nlz * cos
+    };
   }
 
   /** Point-in-slab: oriented road pieces use their real rectangle, not the fat AABB. */
@@ -1303,6 +1429,62 @@ export class WorldMap {
     this.flickerPickAt = now + 0.7 + Math.random() * 1.1;
   }
 
+  private dropConvoySeg(index: number): void {
+    const s = this.convoySegs[index];
+    if (!s || s.falling) return;
+    s.falling = true;
+    s.collider.disabled = true;
+    for (const crate of s.crates) crate.collider.disabled = true;
+  }
+
+  private stepConvoyFall(dt: number): void {
+    for (const s of this.convoySegs) {
+      if (!s.falling) continue;
+      s.fallVel += 28 * dt;
+      s.mesh.position.y -= s.fallVel * dt;
+      if (s.mesh.position.y < s.homeY - 90) s.mesh.visible = false;
+    }
+  }
+
+  /**
+   * After the truck leaves the motor pool, drop one convoy slab per second from the start.
+   * Returns true on the frame the collapse first arms.
+   */
+  updateConvoyCollapse(dt: number, truck: THREE.Vector3, occupied: boolean): boolean {
+    this.stepConvoyFall(dt);
+    let justArmed = false;
+    if (!this.convoyArmed && occupied && this.vehicleSpawn) {
+      const dx = truck.x - this.vehicleSpawn.pos.x;
+      const dz = truck.z - this.vehicleSpawn.pos.z;
+      if (dx * dx + dz * dz > CONVOY_ARM_DIST * CONVOY_ARM_DIST) {
+        this.convoyArmed = true;
+        justArmed = true;
+      }
+    }
+    if (!this.convoyArmed) return false;
+    this.convoyDropAcc += dt;
+    const last = Math.max(0, this.convoySegs.length - CONVOY_KEEP_END);
+    while (this.convoyDropAcc >= CONVOY_DROP_EVERY && this.convoyNext < last) {
+      this.convoyDropAcc -= CONVOY_DROP_EVERY;
+      this.dropConvoySeg(this.convoyNext++);
+    }
+    return justArmed;
+  }
+
+  resetConvoyRoad(): void {
+    this.convoyArmed = false;
+    this.convoyDropAcc = 0;
+    this.convoyNext = CONVOY_SKIP_START;
+    for (const s of this.convoySegs) {
+      s.falling = false;
+      s.fallVel = 0;
+      s.mesh.position.y = s.homeY;
+      s.mesh.visible = true;
+      s.collider.disabled = false;
+      for (const crate of s.crates) crate.collider.disabled = false;
+    }
+  }
+
   private updateErrorDecor(dt: number): void {
     for (const rift of this.errorRifts) {
       const mat = rift.material as THREE.ShaderMaterial;
@@ -1353,6 +1535,7 @@ export class WorldMap {
         this.vehicleSpawn = { pos: new THREE.Vector3(x, y, z), heading };
       },
       addOrientedSlab: this.addOrientedSlab.bind(this),
+      addConvoyCrate: this.addConvoyCrate.bind(this),
       addErrorWorld: this.addErrorWorld.bind(this)
     };
   }
