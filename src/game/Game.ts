@@ -598,20 +598,32 @@ export class Game {
   // ---------------- atmosphere ----------------
 
   private installSpaceSky(): void {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#04050d';
+    ctx.fillRect(0, 0, 1024, 512);
+    for (let i = 0; i < 120; i++) {
+      const x = Math.random() * 1024;
+      const y = Math.random() * 512;
+      const r = Math.random() < 0.12 ? 1.2 : 0.55;
+      ctx.fillStyle = `rgba(236, 240, 248, ${0.28 + Math.random() * 0.45})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
     this.spaceSkyMat = new THREE.MeshBasicMaterial({
+      map: tex,
       side: THREE.BackSide,
       fog: false,
       transparent: true,
       opacity: 0,
       depthWrite: false
     });
-    new THREE.TextureLoader().load('/assets/space-sky.png', (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = 4;
-      this.spaceSkyMat.map = tex;
-      this.spaceSkyMat.needsUpdate = true;
-    });
-    this.spaceSky = new THREE.Mesh(new THREE.SphereGeometry(280, 48, 32), this.spaceSkyMat);
+    this.spaceSky = new THREE.Mesh(new THREE.SphereGeometry(280, 32, 24), this.spaceSkyMat);
     this.spaceSky.frustumCulled = false;
     this.spaceSky.renderOrder = -10;
     this.scene.add(this.spaceSky);
@@ -625,7 +637,7 @@ export class Game {
       ? 1
       : THREE.MathUtils.smoothstep(y, this.world.skyBandMinY - 18, this.world.skyBandMinY);
     const skyT = Math.max(bandT, THREE.MathUtils.smoothstep(y, 52, 95));
-    this.spaceSkyMat.opacity = Math.max(skyT, bandT * 0.92);
+    this.spaceSkyMat.opacity = Math.max(skyT * 0.7, bandT * 0.55);
     this.spaceSky.visible = this.spaceSkyMat.opacity > 0.02;
     if (inBand) {
       bg.copy(SPACE_SKY);
@@ -647,12 +659,12 @@ export class Game {
       fog.near = 70 + skyT * 50;
       fog.far = 320 + THREE.MathUtils.smoothstep(y, 70, 220) * 1400;
     }
-    (this.world.courseStars.material as THREE.PointsMaterial).opacity = bandT;
-    (this.world.blockStars.material as THREE.PointsMaterial).opacity = bandT;
-    this.world.courseNebulaMat.opacity = bandT * 0.28;
+    (this.world.courseStars.material as THREE.PointsMaterial).opacity = bandT * 0.45;
+    (this.world.blockStars.material as THREE.PointsMaterial).opacity = 0;
+    this.world.courseNebulaMat.opacity = 0;
     this.world.skyFollow.visible = bandT > 0.02;
     (this.world.stars.material as THREE.PointsMaterial).opacity =
-      Math.max(bandT * 0.85, THREE.MathUtils.smoothstep(y, 90, 160) * (1 - skyT * 0.35));
+      Math.max(bandT * 0.35, THREE.MathUtils.smoothstep(y, 90, 160) * 0.4);
     const spaceness = THREE.MathUtils.smoothstep(y, 90, 190);
     this.sun.intensity = 2.6 - Math.max(spaceness, bandT * 0.7) * 1.35;
   }

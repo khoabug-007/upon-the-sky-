@@ -1857,7 +1857,7 @@ export class WorldMap {
 
     // Stars everywhere above the sky line
     const starGeo = new THREE.BufferGeometry();
-    const starCount = 800;
+    const starCount = 160;
     const positions = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount; i++) {
       const r = 380 + Math.random() * 250;
@@ -1869,7 +1869,7 @@ export class WorldMap {
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
-      color: 0xffffff, size: 1.35, sizeAttenuation: false, transparent: true, opacity: 0, fog: false
+      color: 0xe8edf4, size: 1.05, sizeAttenuation: false, transparent: true, opacity: 0, fog: false
     }));
     this.scene.add(this.stars);
   }
@@ -1896,15 +1896,13 @@ export class WorldMap {
       }
     };
     const dome: number[] = [];
-    fibonacci(1000, 95, dome, 0.2);
-    fibonacci(550, 150, dome, 1.7);
-    fibonacci(280, 210, dome, 3.1);
+    fibonacci(90, 320, dome, 0.2);
     const domePos = new Float32Array(dome);
     const domeGeo = new THREE.BufferGeometry();
     domeGeo.setAttribute('position', new THREE.BufferAttribute(domePos, 3));
     this.courseStars = new THREE.Points(domeGeo, new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 1.2,
+      color: 0xe8edf4,
+      size: 1.05,
       sizeAttenuation: false,
       transparent: true,
       opacity: 0,
@@ -1932,47 +1930,18 @@ export class WorldMap {
       blending: THREE.AdditiveBlending,
       fog: false
     });
-    const veilN = 8;
-    for (let i = 0; i < veilN; i++) {
-      const u = (i + 0.5) / veilN;
-      const y = 1 - u * 2;
-      const r = Math.sqrt(Math.max(0, 1 - y * y));
-      const t = i * 2.39996;
-      const sprite = new THREE.Sprite(this.courseNebulaMat);
-      sprite.position.set(Math.cos(t) * r * 120, y * 110, Math.sin(t) * r * 120);
-      sprite.scale.set(48 + (i % 5) * 14, 28 + (i % 4) * 18, 1);
-      this.skyFollow.add(sprite);
-    }
-
-    const around: number[] = [];
-    for (const c of this.colliders) {
-      const cy = (c.min.y + c.max.y) * 0.5;
-      if (cy < this.skyBandMinY - 2 || cy > this.skyBandMaxY + 8) continue;
-      const cx = (c.min.x + c.max.x) * 0.5;
-      const cz = (c.min.z + c.max.z) * 0.5;
-      const seed = Math.abs((cx * 13.1 + cy * 7.7 + cz * 3.3) % 1);
-      for (let k = 0; k < 5; k++) {
-        const ang = (k / 5) * Math.PI * 2 + seed * 6.2;
-        const lift = ((k * 5 + seed * 9) % 7) - 2;
-        const rad = 22 + (k % 5) * 9;
-        around.push(
-          cx + Math.cos(ang) * rad,
-          cy + 10 + lift * 4 + (k % 3) * 8,
-          cz + Math.sin(ang) * rad
-        );
-      }
-    }
     const blockGeo = new THREE.BufferGeometry();
-    blockGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(around), 3));
+    blockGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
     this.blockStars = new THREE.Points(blockGeo, new THREE.PointsMaterial({
       color: 0xf4f6fb,
-      size: 1.15,
+      size: 1,
       sizeAttenuation: false,
       transparent: true,
       opacity: 0,
       depthWrite: false,
       fog: false
     }));
+    this.blockStars.visible = false;
     this.blockStars.frustumCulled = false;
     this.scene.add(this.blockStars);
   }
