@@ -146,8 +146,8 @@ const hopCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
   prevZ + prevAlong / 2 + JUMP_GAP + nextAlong / 2;
 const joinCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
   prevZ + prevAlong / 2 + nextAlong / 2;
-const BG_WATCHES = 144;
-const WATCHES_40_60 = 50;
+const BG_WATCHES = 20;
+const WATCHES_40_60 = 8;
 const WATCHES_60_67 = BG_WATCHES - WATCHES_40_60;
 /** Typical pocket-watch world size used to scale floating craft. */
 const WATCH_WORLD = 6.4;
@@ -1007,7 +1007,7 @@ export class WorldMap {
 
   private addErrorWatches(x: number, y: number, z: number, dx: number, dz: number): void {
     const faces: Array<[number, number]> = [
-      [3, 0], [6, 15], [10, 10], [11, 55], [4, 44], [12, 0], [8, 20], [1, 37]
+      [3, 0], [10, 10], [8, 20]
     ];
     for (let i = 0; i < faces.length; i++) {
       const [hour, minute] = faces[i];
@@ -1350,12 +1350,8 @@ export class WorldMap {
     }
 
     const ring = [
-      { s: 1, u: 0 },
-      { s: -1, u: 0 },
-      { s: 0, u: 1 },
-      { s: 0, u: -1 },
-      { s: 0.72, u: 0.72 },
-      { s: -0.72, u: -0.72 }
+      { s: 1, u: 0.12 },
+      { s: -1, u: 0.18 }
     ];
     for (let i = 0; i < n; i++) {
       const t = n <= 1 ? 0 : i / (n - 1);
@@ -1364,12 +1360,12 @@ export class WorldMap {
       if (side.lengthSq() < 1e-6) side.set(1, 0, 0);
       else side.normalize();
       const slot = ring[i % ring.length]!;
-      const rad = 10.5 + Math.floor(i / ring.length) % 3 * 2.4;
-      const alongJitter = ((i % 7) - 3) * 0.9;
+      const rad = 20 + (i % 4) * 3.5;
+      const alongJitter = ((i % 5) - 2) * 1.4;
       const px = p.x + side.x * rad * slot.s + dir.x * alongJitter;
       const pz = p.z + side.z * rad * slot.s + dir.z * alongJitter;
       const py = p.y + rad * slot.u * 0.9;
-      const scale = 4.0 + (i % 7) * 0.42;
+      const scale = 3.2 + (i % 5) * 0.28;
       const hour = i % 12;
       const minute = (Math.floor(i / 12) * 7) % 60;
       const hourA = ((hour % 12) + minute / 60) * (Math.PI * 2 / 12);
