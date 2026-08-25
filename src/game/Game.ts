@@ -649,7 +649,7 @@ export class Game {
     }
     (this.world.courseStars.material as THREE.PointsMaterial).opacity = bandT;
     (this.world.blockStars.material as THREE.PointsMaterial).opacity = bandT;
-    this.world.courseNebulaMat.opacity = bandT * 0.42;
+    this.world.courseNebulaMat.opacity = bandT * 0.28;
     this.world.skyFollow.visible = bandT > 0.02;
     (this.world.stars.material as THREE.PointsMaterial).opacity =
       Math.max(bandT * 0.85, THREE.MathUtils.smoothstep(y, 90, 160) * (1 - skyT * 0.35));

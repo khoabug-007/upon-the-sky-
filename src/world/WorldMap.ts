@@ -1857,7 +1857,7 @@ export class WorldMap {
 
     // Stars everywhere above the sky line
     const starGeo = new THREE.BufferGeometry();
-    const starCount = 1800;
+    const starCount = 800;
     const positions = new Float32Array(starCount * 3);
     for (let i = 0; i < starCount; i++) {
       const r = 380 + Math.random() * 250;
@@ -1869,7 +1869,7 @@ export class WorldMap {
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
-      color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, fog: false
+      color: 0xffffff, size: 1.35, sizeAttenuation: false, transparent: true, opacity: 0, fog: false
     }));
     this.scene.add(this.stars);
   }
@@ -1896,15 +1896,15 @@ export class WorldMap {
       }
     };
     const dome: number[] = [];
-    fibonacci(2800, 95, dome, 0.2);
-    fibonacci(1600, 150, dome, 1.7);
-    fibonacci(900, 210, dome, 3.1);
+    fibonacci(1000, 95, dome, 0.2);
+    fibonacci(550, 150, dome, 1.7);
+    fibonacci(280, 210, dome, 3.1);
     const domePos = new Float32Array(dome);
     const domeGeo = new THREE.BufferGeometry();
     domeGeo.setAttribute('position', new THREE.BufferAttribute(domePos, 3));
     this.courseStars = new THREE.Points(domeGeo, new THREE.PointsMaterial({
       color: 0xffffff,
-      size: 1.45,
+      size: 1.2,
       sizeAttenuation: false,
       transparent: true,
       opacity: 0,
@@ -1932,7 +1932,7 @@ export class WorldMap {
       blending: THREE.AdditiveBlending,
       fog: false
     });
-    const veilN = 16;
+    const veilN = 8;
     for (let i = 0; i < veilN; i++) {
       const u = (i + 0.5) / veilN;
       const y = 1 - u * 2;
@@ -1951,8 +1951,8 @@ export class WorldMap {
       const cx = (c.min.x + c.max.x) * 0.5;
       const cz = (c.min.z + c.max.z) * 0.5;
       const seed = Math.abs((cx * 13.1 + cy * 7.7 + cz * 3.3) % 1);
-      for (let k = 0; k < 14; k++) {
-        const ang = (k / 14) * Math.PI * 2 + seed * 6.2;
+      for (let k = 0; k < 5; k++) {
+        const ang = (k / 5) * Math.PI * 2 + seed * 6.2;
         const lift = ((k * 5 + seed * 9) % 7) - 2;
         const rad = 22 + (k % 5) * 9;
         around.push(
@@ -1966,7 +1966,7 @@ export class WorldMap {
     blockGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(around), 3));
     this.blockStars = new THREE.Points(blockGeo, new THREE.PointsMaterial({
       color: 0xf4f6fb,
-      size: 1.35,
+      size: 1.15,
       sizeAttenuation: false,
       transparent: true,
       opacity: 0,
