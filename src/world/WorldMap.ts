@@ -195,7 +195,11 @@ function makeErrorWorldSign(): THREE.Sprite {
 
 function warpGold(hex: number): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: hex, metalness: 0.82, roughness: 0.28, emissive: hex, emissiveIntensity: 0.08
+    color: hex,
+    metalness: 0.88,
+    roughness: 0.22,
+    emissive: 0x3b1860,
+    emissiveIntensity: 0.28
   });
 }
 
@@ -233,7 +237,6 @@ export class WorldMap {
   private crateMat = mat(0xb5651d);
   private warpWatches: WarpWatch[] = [];
   private errorRifts: THREE.Mesh[] = [];
-  private instancedWatchMats: THREE.MeshStandardMaterial[] = [];
   private spaceFloaters: SpaceFloater[] = [];
   private errorWorldOrigin = new THREE.Vector3();
   private riftSpriteMat: THREE.ShaderMaterial | null = null;
@@ -459,6 +462,9 @@ export class WorldMap {
 
   private static craftTpl = new Map<string, THREE.Object3D>();
   private static craftWait = new Map<string, Array<(src: THREE.Object3D) => void>>();
+  private static watchTpl: THREE.Object3D | null = null;
+  private static watchTried = false;
+  private static watchWait: Array<(src: THREE.Object3D | null) => void> = [];
 
   private loadCraft(url: string, place: (src: THREE.Object3D) => void): void {
     const cached = WorldMap.craftTpl.get(url);
@@ -1010,35 +1016,92 @@ export class WorldMap {
       [3, 0], [10, 10], [8, 20]
     ];
     for (let i = 0; i < faces.length; i++) {
-      const [hour, minute] = faces[i];
+      const [hour, minute] = faces[i]!;
       const ang = (i / faces.length) * Math.PI * 2 + 0.4;
       const rad = 22 + (i % 3) * 6;
       const px = x - dx * 6 + Math.cos(ang) * rad;
       const pz = z - dz * 6 + Math.sin(ang) * rad;
       const py = y + 11 + (i % 4) * 4.5;
-      const watch = this.makePocketWatch(hour, minute);
-      watch.position.set(px, py, pz);
       const scale = 7.4 + (i % 3) * 2.8;
-      watch.scale.setScalar(scale);
-      watch.lookAt(x, y + 3, z);
-      this.scene.add(watch);
-      const mats: THREE.MeshStandardMaterial[] = [];
-      watch.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh && m.material) {
-          const mat = m.material as THREE.MeshStandardMaterial;
-          if (mat.userData.warped) mats.push(mat);
-        }
-      });
-      this.warpWatches.push({ group: watch, phase: i * 1.17, base: scale, mats });
+      this.placeMysteryWatch(px, py, pz, scale, x, y + 3, z, hour, minute, i * 1.17);
     }
+  }
+
+  /** Blender GLB if present; otherwise the built-in watch. All of them spin. */
+  private placeMysteryWatch(
+    x: number, y: number, z: number, scale: number,
+    lookX: number, lookY: number, lookZ: number,
+    hour: number, minute: number, phase: number
+  ): void {
+    const group = new THREE.Group();
+    group.position.set(x, y, z);
+    group.lookAt(lookX, lookY, lookZ);
+    this.scene.add(group);
+    const mats: THREE.MeshStandardMaterial[] = [];
+    this.warpWatches.push({ group, phase, base: scale, mats });
+    this.dressWatchModel(group, hour, minute, mats);
+  }
+
+  private dressWatchModel(
+    into: THREE.Group, hour: number, minute: number, mats: THREE.MeshStandardMaterial[]
+  ): void {
+    const tintMystery = (root: THREE.Object3D) => {
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        m.castShadow = false;
+        m.receiveShadow = false;
+        const src = m.material as THREE.MeshStandardMaterial;
+        if (!src || !('emissive' in src)) return;
+        const mat = src.clone();
+        mat.emissive = new THREE.Color(0x4a1a78);
+        mat.emissiveIntensity = Math.max(mat.emissiveIntensity ?? 0, 0.2);
+        m.material = mat;
+        mats.push(mat);
+      });
+    };
+    const mount = (src: THREE.Object3D | null) => {
+      if (src) {
+        const root = src.clone(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3());
+        const longest = Math.max(size.x, size.y, size.z, 0.01);
+        root.scale.multiplyScalar(1.35 / longest);
+        box.setFromObject(root);
+        root.position.sub(box.getCenter(new THREE.Vector3()));
+        tintMystery(root);
+        into.add(root);
+        return;
+      }
+      const watch = this.makePocketWatch(hour, minute);
+      tintMystery(watch);
+      into.add(watch);
+    };
+    if (WorldMap.watchTried) {
+      mount(WorldMap.watchTpl);
+      return;
+    }
+    WorldMap.watchWait.push(mount);
+    if (WorldMap.watchWait.length > 1) return;
+    gltfLoader().load('/assets/pocket-watch.glb', (gltf) => {
+      WorldMap.watchTried = true;
+      WorldMap.watchTpl = gltf.scene;
+      const q = WorldMap.watchWait.splice(0);
+      for (const fn of q) fn(gltf.scene);
+    }, undefined, () => {
+      WorldMap.watchTried = true;
+      WorldMap.watchTpl = null;
+      const q = WorldMap.watchWait.splice(0);
+      for (const fn of q) fn(null);
+    });
   }
 
   private makePocketWatch(hour: number, minute: number): THREE.Group {
     const gold = warpGold(0xc4a35a);
     const dark = warpGold(0x3a2a18);
     const face = new THREE.MeshStandardMaterial({
-      color: 0xf3e6c8, roughness: 0.55, metalness: 0.08, emissive: 0x221810, emissiveIntensity: 0.12
+      color: 0xf3e6c8, roughness: 0.5, metalness: 0.12,
+      emissive: 0x2a1048, emissiveIntensity: 0.18
     });
     const g = new THREE.Group();
     const caseR = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.1, 12, 36), gold);
@@ -1062,13 +1125,6 @@ export class WorldMap {
     g.add(caseR, disc, back, crown, ring, hourHand, minHand);
     g.rotation.x = -0.35;
     return g;
-  }
-
-  private instancedWarpGold(colorHex: number, emissiveHex: number): THREE.MeshStandardMaterial {
-    return new THREE.MeshStandardMaterial({
-      color: colorHex, metalness: 0.82, roughness: 0.28,
-      emissive: emissiveHex, emissiveIntensity: 0.08
-    });
   }
 
   private collectErrorBandSpine(): THREE.Vector3[] {
@@ -1276,79 +1332,6 @@ export class WorldMap {
 
   private addErrorBandWatches(spine: THREE.Vector3[], n: number): void {
     if (n < 1 || !spine.length) return;
-    const phases = new Float32Array(n);
-    for (let i = 0; i < n; i++) phases[i] = i * 1.17;
-    const withPhase = (geo: THREE.BufferGeometry) => {
-      geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phases.slice(), 1));
-      return geo;
-    };
-
-    const goldMat = this.instancedWarpGold(0xffffff, 0xc4a35a);
-    const darkMat = this.instancedWarpGold(0x3a2a18, 0x3a2a18);
-    const faceMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, roughness: 0.55, metalness: 0.08,
-      emissive: 0x221810, emissiveIntensity: 0.12
-    });
-    this.instancedWatchMats.push(goldMat, darkMat);
-
-    const parts: Array<{
-      mesh: THREE.InstancedMesh;
-      pos: (hourA: number, minA: number) => THREE.Vector3;
-      rot: (hourA: number, minA: number) => THREE.Euler;
-    }> = [
-      {
-        mesh: new THREE.InstancedMesh(withPhase(new THREE.TorusGeometry(0.62, 0.1, 12, 36)), goldMat, n),
-        pos: () => new THREE.Vector3(0, 0, 0),
-        rot: () => new THREE.Euler(Math.PI / 2, 0, 0)
-      },
-      {
-        mesh: new THREE.InstancedMesh(withPhase(new THREE.CylinderGeometry(0.55, 0.55, 0.06, 36)), faceMat, n),
-        pos: () => new THREE.Vector3(0, 0, 0),
-        rot: () => new THREE.Euler(0, 0, 0)
-      },
-      {
-        mesh: new THREE.InstancedMesh(withPhase(new THREE.CylinderGeometry(0.58, 0.58, 0.08, 28)), darkMat, n),
-        pos: () => new THREE.Vector3(0, -0.06, 0),
-        rot: () => new THREE.Euler(0, 0, 0)
-      },
-      {
-        mesh: new THREE.InstancedMesh(withPhase(new THREE.CylinderGeometry(0.08, 0.1, 0.22, 10)), goldMat, n),
-        pos: () => new THREE.Vector3(0, 0, 0.72),
-        rot: () => new THREE.Euler(Math.PI / 2, 0, 0)
-      },
-      {
-        mesh: new THREE.InstancedMesh(withPhase(new THREE.TorusGeometry(0.12, 0.025, 8, 18)), goldMat, n),
-        pos: () => new THREE.Vector3(0, 0, 0.9),
-        rot: () => new THREE.Euler(0, 0, 0)
-      },
-      {
-        mesh: new THREE.InstancedMesh(withPhase(new THREE.BoxGeometry(0.06, 0.28, 0.03)), darkMat, n),
-        pos: (hourA) => new THREE.Vector3(Math.sin(hourA) * 0.12, 0.05, Math.cos(hourA) * 0.12),
-        rot: (hourA) => new THREE.Euler(0, hourA, 0)
-      },
-      {
-        mesh: new THREE.InstancedMesh(withPhase(new THREE.BoxGeometry(0.04, 0.4, 0.025)), darkMat, n),
-        pos: (_h, minA) => new THREE.Vector3(Math.sin(minA) * 0.18, 0.055, Math.cos(minA) * 0.18),
-        rot: (_h, minA) => new THREE.Euler(0, minA, 0)
-      }
-    ];
-
-    const goldTones = [0xc4a35a, 0xb8860b, 0xc9a84c, 0xa67c52, 0xd4af37, 0x8d6e3d];
-    const ivoryTones = [0xf3e6c8, 0xf7edd8, 0xead9b8, 0xe8dcc4];
-    const dummy = new THREE.Object3D();
-    const local = new THREE.Object3D();
-    const world = new THREE.Matrix4();
-    const composed = new THREE.Matrix4();
-    const goldColor = new THREE.Color();
-    const ivoryColor = new THREE.Color();
-
-    for (const part of parts) {
-      part.mesh.frustumCulled = false;
-      part.mesh.castShadow = false;
-      part.mesh.receiveShadow = false;
-      this.scene.add(part.mesh);
-    }
-
     const ring = [
       { s: 1, u: 0.12 },
       { s: -1, u: 0.18 }
@@ -1366,39 +1349,9 @@ export class WorldMap {
       const pz = p.z + side.z * rad * slot.s + dir.z * alongJitter;
       const py = p.y + rad * slot.u * 0.9;
       const scale = 3.2 + (i % 5) * 0.28;
-      const hour = i % 12;
-      const minute = (Math.floor(i / 12) * 7) % 60;
-      const hourA = ((hour % 12) + minute / 60) * (Math.PI * 2 / 12);
-      const minA = (minute / 60) * Math.PI * 2;
-
-      dummy.position.set(px, py, pz);
-      dummy.scale.setScalar(scale);
-      dummy.rotation.set(0, 0, 0);
-      dummy.lookAt(p.x, p.y + 2, p.z);
-      dummy.rotateX(-0.35 + ((i % 7) - 3) * 0.06);
-      dummy.rotateZ(((i % 5) - 2) * 0.05);
-      dummy.updateMatrix();
-      world.copy(dummy.matrix);
-
-      goldColor.setHex(goldTones[i % goldTones.length]!);
-      ivoryColor.setHex(ivoryTones[i % ivoryTones.length]!);
-
-      for (let pIdx = 0; pIdx < parts.length; pIdx++) {
-        const part = parts[pIdx]!;
-        local.position.copy(part.pos(hourA, minA));
-        local.rotation.copy(part.rot(hourA, minA));
-        local.scale.set(1, 1, 1);
-        local.updateMatrix();
-        composed.multiplyMatrices(world, local.matrix);
-        part.mesh.setMatrixAt(i, composed);
-        if (pIdx === 1) part.mesh.setColorAt(i, ivoryColor);
-        else if (pIdx === 0 || pIdx === 3 || pIdx === 4) part.mesh.setColorAt(i, goldColor);
-      }
-    }
-
-    for (const part of parts) {
-      part.mesh.instanceMatrix.needsUpdate = true;
-      if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
+      this.placeMysteryWatch(
+        px, py, pz, scale, p.x, p.y + 2, p.z, i % 12, (Math.floor(i / 12) * 7) % 60, i * 1.17
+      );
     }
   }
 
@@ -1487,23 +1440,15 @@ export class WorldMap {
       if (mat.uniforms?.uTime) mat.uniforms.uTime.value = this.time;
     }
     if (this.riftSpriteMat?.uniforms?.uTime) this.riftSpriteMat.uniforms.uTime.value = this.time;
-    for (const m of this.instancedWatchMats) {
-      const sh = m.userData.shader as { uniforms: { uTime: { value: number } } } | undefined;
-      if (sh) sh.uniforms.uTime.value = this.time;
-    }
     for (const w of this.warpWatches) {
       const t = this.time + w.phase;
-      w.group.rotation.x = -0.35 + Math.sin(t * 0.65) * 0.55 + Math.sin(t * 1.31) * 0.22;
-      w.group.rotation.z = Math.sin(t * 0.47) * 0.7 + Math.cos(t * 1.07) * 0.28;
-      w.group.rotation.y += 0.22 * dt;
-      const sx = 1 + Math.sin(t * 0.9) * 0.18;
-      const sy = 1 + Math.cos(t * 1.15) * 0.22;
-      const sz = 1 + Math.sin(t * 0.72 + 1.4) * 0.16;
-      const breathe = 0.92 + 0.08 * Math.sin(t * 0.4);
-      w.group.scale.set(w.base * breathe * sx, w.base * breathe * sy, w.base * breathe * sz);
+      w.group.rotation.y += (0.62 + (w.phase % 0.35)) * dt;
+      w.group.rotation.x = -0.18 + Math.sin(t * 0.48) * 0.42 + Math.sin(t * 0.91) * 0.12;
+      w.group.rotation.z = Math.sin(t * 0.33 + 0.8) * 0.38;
+      const pulse = 1 + Math.sin(t * 0.7) * 0.06;
+      w.group.scale.setScalar(w.base * pulse);
       for (const m of w.mats) {
-        const sh = m.userData.shader as { uniforms: { uTime: { value: number } } } | undefined;
-        if (sh) sh.uniforms.uTime.value = t;
+        m.emissiveIntensity = 0.16 + 0.18 * (0.5 + 0.5 * Math.sin(t * 1.4));
       }
     }
     for (const f of this.spaceFloaters) {
