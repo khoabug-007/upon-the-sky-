@@ -34,7 +34,7 @@ export class Menu {
     this.render();
     this.setupPreview();
     network.onConnectionChange = (ok) => this.setConnStatus(ok);
-    this.setConnStatus(network.connected);
+    this.setConnStatus(network.online);
   }
 
   getProfile(): Profile { return this.profile; }
@@ -113,7 +113,7 @@ export class Menu {
     });
     document.getElementById('btn-join')!.addEventListener('click', () => this.showServerBoard());
     document.getElementById('btn-find')!.addEventListener('click', () => this.showFindServer());
-    document.getElementById('btn-create')!.addEventListener('click', () => this.showCreateServer());
+    document.getElementById('btn-create')!.addEventListener('click', () => this.createAndPlay());
   }
 
   private sliderHtml(id: string, label: string, value: number): string {
@@ -129,8 +129,8 @@ export class Menu {
     const el = document.getElementById('conn-status');
     if (!el) return;
     el.textContent = ok
-      ? 'ONLINE - servers around the world await'
-      : 'OFFLINE - Climb Solo works. Multiplayer needs a Node host (not Vercel).';
+      ? 'ONLINE — create a server and share the 6-letter code'
+      : 'Connecting… you can still Climb Solo.';
     el.classList.toggle('online', ok);
   }
 
@@ -201,7 +201,7 @@ export class Menu {
     const servers = await this.network.listServers();
     const body = servers.length
       ? servers.map((s) => this.serverCardHtml(s)).join('')
-      : `<div class="board-empty">No servers yet. Be the hero: create the first one!</div>`;
+      : `<div class="board-empty">No public lobby list on this host. Ask your friend for their 6-letter code and tap FIND SERVER.</div>`;
     this.dyn().innerHTML = `
       <div class="board">
         <div class="board-title">LIVE SERVERS <button class="btn btn-small" id="btn-refresh">refresh</button></div>
@@ -238,25 +238,22 @@ export class Menu {
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doFind(); });
   }
 
-  private showCreateServer(): void {
+  private async createAndPlay(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    const name = `${this.profile.name}'s sky party`.slice(0, 30);
     this.dyn().innerHTML = `
       <div class="board">
         <div class="board-title">CREATE YOUR SERVER</div>
-        <div class="find-row">
-          <input class="text-input" id="create-input" maxlength="30" placeholder="Server name (e.g. Sky Legends)" value="${escapeHtml(this.profile.name)}'s sky party" />
-          <button class="btn btn-gold" id="btn-do-create">CREATE &amp; PLAY</button>
-        </div>
-        <div class="board-body" id="create-result">You will get a 6-letter code to share with friends anywhere in the world.</div>
+        <div class="board-body" id="create-result">Opening your room… keep this tab open so friends can join.</div>
       </div>`;
-    document.getElementById('btn-do-create')!.addEventListener('click', async () => {
-      if (this.busy) return;
-      this.busy = true;
-      const name = (document.getElementById('create-input') as HTMLInputElement).value.trim() || 'Fun Server';
-      const res = await this.network.createServer(name, this.profile);
-      this.busy = false;
-      if (res.ok) this.onEnterGame?.(res, this.profile);
-      else document.getElementById('create-result')!.textContent = res.error ?? 'Could not create the server.';
-    });
+    const res = await this.network.createServer(name, this.profile);
+    this.busy = false;
+    if (res.ok) this.onEnterGame?.(res, this.profile);
+    else {
+      const el = document.getElementById('create-result');
+      if (el) el.textContent = res.error ?? 'Could not create the server. Try again.';
+    }
   }
 
   private async joinByCode(code: string): Promise<void> {

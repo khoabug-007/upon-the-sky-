@@ -31,9 +31,11 @@ This GitHub repo is the **browser / WebGL** game only (not Unity).
 
 1. Import [khoabug-007/upon-the-sky-](https://github.com/khoabug-007/upon-the-sky-) on [vercel.com](https://vercel.com/new).
 2. Leave the defaults from `vercel.json`: build `npm run build`, output `dist`, framework Vite.
-3. Deploy. Open the `*.vercel.app` URL and click **Climb Solo**.
+3. Deploy. Open the `*.vercel.app` URL.
 
-Vercel is a static host. **Create / Join Server will not work there** unless you also run `server/index.js` on a always-on Node host (Render/Railway/Fly) and set the Vercel env var `VITE_SOCKET_URL` to that host (then Redeploy).
+**Climb Solo**, **Create Server**, **Find Server**, and **Join** all work on that URL. Create Server opens a browser room (WebRTC). Share the 6-letter code. Keep the host tab open.
+
+Optional: for a shared public lobby list (Join Server board), also run `server/index.js` on Render/Railway/Fly and set Vercel env `VITE_SOCKET_URL` to that host, then Redeploy.
 
 ## Public deploy with multiplayer (Render, Railway, Fly)
 
