@@ -28,6 +28,8 @@ export interface Mover {
   phase: number;
   size: THREE.Vector3;
   delta: THREE.Vector3;
+  /** If set, ping-pong at constant speed instead of a sine surge in the middle. */
+  linear?: boolean;
 }
 
 export interface Rotor {
@@ -722,7 +724,8 @@ export class WorldMap {
     };
     this.colliders.push(collider);
     this.movers.push({
-      mesh, collider, a: a.clone(), b: b.clone(), speed, phase, size, delta: new THREE.Vector3()
+      mesh, collider, a: a.clone(), b: b.clone(), speed, phase, size, delta: new THREE.Vector3(),
+      linear: true
     });
   }
 
@@ -2004,7 +2007,13 @@ export class WorldMap {
     this.time += dt;
 
     for (const m of this.movers) {
-      const t = 0.5 + 0.5 * Math.sin(this.time * m.speed + m.phase);
+      let t: number;
+      if (m.linear) {
+        const u = (this.time * m.speed + m.phase) % 2;
+        t = u < 1 ? u : 2 - u;
+      } else {
+        t = 0.5 + 0.5 * Math.sin(this.time * m.speed + m.phase);
+      }
       const nx = m.a.x + (m.b.x - m.a.x) * t;
       const ny = m.a.y + (m.b.y - m.a.y) * t;
       const nz = m.a.z + (m.b.z - m.a.z) * t;

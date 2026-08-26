@@ -13,9 +13,11 @@ const TRAMP_BOUNCE_VEL = 17.5;
 const GRAVITY_MAG = 24;
 const SPACE_GRAVITY_MAG = 7.5;
 const REBOUND_R = 1.45;
-const REBOUND_COUNT = 50;
-/** Sine speed for both UFO ferries. Lower = slower (was 0.38). */
-const UFO_SPEED = 0.12;
+/** Linear ping-pong: one-way time is 1/speed seconds. */
+const UFO_SPEED = 0.035;
+/** Short diagonal so the ride crawls instead of covering the old 50-pad climb. */
+const UFO_CLIMB = 14;
+const UFO_ALONG = 12;
 /** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
 const WALK_HOP_GAP = 2.2;
 const PAD = 3.1;
@@ -359,18 +361,11 @@ function reverseSpin(
   return { x: ex, y, z: ez };
 }
 
-/** Levels 60–67: two UFO ferries from the Level 60 pad to the flag. */
+/** Levels 60–67: two slow UFO ferries from the Level 60 pad to the flag. */
 function reboundRows(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number
 ): { x: number; y: number; z: number } {
-  const rise = y > SPACE_BAND_Y ? 6.4 : 1.45;
-  // Same-height hang time is too long: each pad is `rise` higher, so you land sooner.
-  const reach = bounceStep(y, rise);
-  const gap = Math.max(REBOUND_R * 2 + 1.4, reach - REBOUND_R * 0.55);
-  // Little forward, big side-to-side so the path reads as /\/\/\/ from above.
-  const alongStep = gap * 0.18;
-  const sideAmp = Math.sqrt(Math.max(0.01, gap * gap - alongStep * alongStep)) / 2;
   const startAlong = 6;
   const startHalf = 2.6;
   const { w: sw, d: sd } = padDimsAlongTravel(dx, dz, 5.2, 5.2);
@@ -383,20 +378,6 @@ function reboundRows(
   );
   flagAt(api, sx, y + 0.5, sz, 'Level 60', true);
 
-  const firstAlong = startAlong + startHalf + WALK_HOP_GAP + REBOUND_R;
-  const spot = (i: number) => {
-    const along = firstAlong + i * alongStep;
-    const zig = i === 0 ? 0 : (i % 2 === 0 ? -sideAmp : sideAmp);
-    const side = sideOf(dx, dz, zig);
-    return {
-      x: ox + dx * along + side.x,
-      y: y + i * rise,
-      z: z + dz * along + side.z
-    };
-  };
-
-  // The four pink pads you see from Level 60 become two UFO ferries.
-  const end = spot(REBOUND_COUNT);
   const yaw = Math.atan2(dx, dz);
   const left = sideOf(dx, dz, -1);
   const right = sideOf(dx, dz, 1);
@@ -405,6 +386,13 @@ function reboundRows(
   const padHalf = 3.1;
   const startTop = y + 0.5;
   const lowAlong = startAlong + startHalf + WALK_HOP_GAP + saucer.x / 2;
+  const endAlong = lowAlong + UFO_ALONG;
+  const endY = y + UFO_CLIMB;
+  const end = {
+    x: ox + dx * endAlong,
+    y: endY,
+    z: z + dz * endAlong
+  };
   const lowSide = 5.6;
   const deckLift = (h: number) => startTop - h / 2;
   const highLift = (h: number) => end.y + 0.5 - h / 2;
@@ -436,7 +424,7 @@ function reboundRows(
       highLift(delta.y),
       end.z + right.z * highGap(delta.x / 2)
     ),
-    UFO_SPEED, Math.PI, yaw, 'Triangle UFO'
+    UFO_SPEED, 1, yaw, 'Triangle UFO'
   );
 
   const { w: ew, d: ed } = padDimsAlongTravel(dx, dz, 6.2, 6.2);
