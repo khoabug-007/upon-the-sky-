@@ -22,10 +22,18 @@ const PATH_LEN = 2;
 const COURSE_RUN = 1;
 const runCount = (n: number) => Math.max(1, Math.round(n * COURSE_RUN));
 
-/** Walk-speed hang time after a bounce; center-to-center so the next pad is just in reach. */
-function bounceStep(py: number): number {
+/** Seconds in the air from a bounce until you come back down to `landRise` above the pad. */
+function bounceFlightTime(py: number, landRise: number): number {
   const g = py > SPACE_BAND_Y ? SPACE_GRAVITY_MAG : GRAVITY_MAG;
-  return WALK_SPEED * ((2 * TRAMP_BOUNCE_VEL) / g);
+  const v = TRAMP_BOUNCE_VEL;
+  const disc = v * v - 2 * g * Math.max(0, landRise);
+  if (disc <= 0) return (2 * v) / g;
+  return (v + Math.sqrt(disc)) / g;
+}
+
+/** Walk-speed distance after a bounce that lands `landRise` higher. Pads closer than this stay catchable. */
+function bounceStep(py: number, landRise = 0): number {
+  return WALK_SPEED * bounceFlightTime(py, landRise);
 }
 
 /** Obstacle segments to append after the hand-authored course (same length as before). */
@@ -344,11 +352,13 @@ function reboundRows(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number
 ): { x: number; y: number; z: number } {
-  const gap = bounceStep(y);
+  const rise = y > SPACE_BAND_Y ? 6.4 : 1.45;
+  // Same-height hang time is too long: each pad is `rise` higher, so you land sooner.
+  const reach = bounceStep(y, rise);
+  const gap = Math.max(REBOUND_R * 2 + 1.4, reach - REBOUND_R * 0.55);
   // Little forward, big side-to-side so the path reads as /\/\/\/ from above.
   const alongStep = gap * 0.18;
   const sideAmp = Math.sqrt(Math.max(0.01, gap * gap - alongStep * alongStep)) / 2;
-  const rise = y > SPACE_BAND_Y ? 6.4 : 1.45;
   const startAlong = 6;
   const startHalf = 2.6;
   const { w: sw, d: sd } = padDimsAlongTravel(dx, dz, 5.2, 5.2);
