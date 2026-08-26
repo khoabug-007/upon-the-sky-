@@ -71,6 +71,17 @@ export class PlayerController {
     return this.groundCollider?.name ?? null;
   }
 
+  /** True when the feet are over the walkable disc/top of a box (not its invisible AABB corners). */
+  private overDisc(c: BoxCollider): boolean {
+    const cx = (c.min.x + c.max.x) * 0.5;
+    const cz = (c.min.z + c.max.z) * 0.5;
+    const pr = Math.min(c.max.x - c.min.x, c.max.z - c.min.z) * 0.5;
+    const dx = this.pos.x - cx;
+    const dz = this.pos.z - cz;
+    const hit = pr + this.radius;
+    return dx * dx + dz * dz <= hit * hit;
+  }
+
   teleport(p: THREE.Vector3): void {
     this.pos.copy(p);
     this.prevPos.copy(p);
@@ -136,7 +147,7 @@ export class PlayerController {
     const walkSpeed = this.onSlope ? SLOPE_WALK_SPEED : WALK_SPEED;
     const runSpeed = this.onSlope ? SLOPE_RUN_SPEED : RUN_SPEED;
     const targetSpeed = this.crawling ? CRAWL_SPEED : (input.down('ShiftLeft') || input.down('ShiftRight')) ? runSpeed : walkSpeed;
-    const accel = this.onGround ? 42 : (inSpace ? 8 : 14);
+    const accel = this.onGround ? 42 : (inSpace ? 16 : 14);
     const desiredX = move.x * targetSpeed;
     const desiredZ = move.z * targetSpeed;
     const k = Math.min(1, accel * dt / Math.max(0.001, targetSpeed));
@@ -276,9 +287,10 @@ export class PlayerController {
       const solidWall = boxH > 2.2;
 
       if (axis === 'x' || axis === 'z') {
-        // Trampolines only bounce on Y. Side-ejecting them zeros walk speed
-        // and strands the zigzag rebound chain.
-        if (c.bouncy) continue;
+        const shortPad = boxH <= 2.2;
+        // Thin floors (pads, trampolines, curbs) must not act as invisible walls
+        // while you are in a bounce or jump. Side-eject zeros XZ and drops the chain.
+        if (c.bouncy || (!this.onGround && shortPad)) continue;
         // Floor top: do not treat as a wall.
         if (this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN) continue;
         // Higher pad that only the head/torso reaches (clouds/blocks stacked 1.5m, player ~1.7m).
@@ -303,7 +315,8 @@ export class PlayerController {
         }
       } else {
         const prevY = this.pos.y - amount;
-        if (c.bouncy && amount <= 0) {
+        const fromAbove = amount <= 0 && prevY >= c.max.y - 0.22;
+        if (c.bouncy && fromAbove && this.overDisc(c)) {
           this.pos.y = c.max.y;
           this.vel.y = TRAMPOLINE_BOUNCE_VEL;
           this.onBounce?.();
@@ -312,6 +325,7 @@ export class PlayerController {
         const crossedTop = amount <= 0 && prevY >= c.max.y - 0.08 && this.pos.y <= c.max.y;
         const inTopSkin = amount <= 0 && this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN;
         if (crossedTop || inTopSkin) {
+          if (c.bouncy && !this.overDisc(c)) continue;
           this.pos.y = c.max.y;
           if (c.bouncy) {
             this.vel.y = TRAMPOLINE_BOUNCE_VEL;

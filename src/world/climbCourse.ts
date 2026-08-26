@@ -11,7 +11,7 @@ const WALK_SPEED = 5.5;
 const TRAMP_BOUNCE_VEL = 17.5;
 const GRAVITY_MAG = 24;
 const SPACE_GRAVITY_MAG = 7.5;
-const REBOUND_R = 1.08;
+const REBOUND_R = 1.45;
 const REBOUND_COUNT = 50;
 /** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
 const WALK_HOP_GAP = 2.2;
