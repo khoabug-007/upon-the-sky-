@@ -37,6 +37,8 @@ export class HUD {
   private gearMenu!: HTMLElement;
   private howtoOverlay!: HTMLElement;
   private shiftLockEl!: HTMLElement;
+  private fallOutEl!: HTMLElement;
+  private fallOutCountEl!: HTMLElement;
 
   onPlayAgain: (() => void) | null = null;
   onCommand: ((command: string) => void) | null = null;
@@ -101,6 +103,11 @@ export class HUD {
         <div class="struggle-hint">CLICK</div>
       </div>
       <div class="toast hidden" id="hud-toast"></div>
+      <div class="fall-out hidden" id="hud-fall-out">
+        <div class="fall-out-kicker">Fell off</div>
+        <div class="fall-out-count" id="hud-fall-out-count">4</div>
+        <div class="fall-out-hint">Back to checkpoint</div>
+      </div>
       <div class="ending-overlay hidden" id="hud-ending"></div>
     `;
     this.toastEl = document.getElementById('hud-toast')!;
@@ -116,6 +123,8 @@ export class HUD {
     this.gearMenu = document.getElementById('hud-gear-menu')!;
     this.howtoOverlay = document.getElementById('hud-howto-overlay')!;
     this.shiftLockEl = document.getElementById('hud-shift-lock')!;
+    this.fallOutEl = document.getElementById('hud-fall-out')!;
+    this.fallOutCountEl = document.getElementById('hud-fall-out-count')!;
 
     this.gearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -239,6 +248,15 @@ export class HUD {
 
   setShiftLock(on: boolean): void {
     this.shiftLockEl.classList.toggle('hidden', !on);
+  }
+
+  setFallOut(secondsLeft: number | null): void {
+    if (secondsLeft === null) {
+      this.fallOutEl.classList.add('hidden');
+      return;
+    }
+    this.fallOutCountEl.textContent = `${Math.max(1, Math.ceil(secondsLeft))}`;
+    this.fallOutEl.classList.remove('hidden');
   }
 
   private toggleGearMenu(): void {

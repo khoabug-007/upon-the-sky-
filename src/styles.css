@@ -445,6 +445,40 @@ input[type="range"]::-webkit-slider-thumb {
   margin-top: -1px;
 }
 
+.fall-out {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%);
+  min-width: 220px;
+  text-align: center;
+  padding: 16px 28px 18px;
+  background: rgba(20, 28, 48, 0.92);
+  border: 2px solid var(--gold);
+  border-radius: 16px;
+  color: #fff;
+  z-index: 35;
+  pointer-events: none;
+}
+.fall-out-kicker {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #c5b07a;
+}
+.fall-out-count {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  font-size: 56px;
+  line-height: 1;
+  color: var(--gold);
+  margin: 4px 0 2px;
+}
+.fall-out-hint {
+  font-size: 14px;
+  color: #fff8e7;
+}
+
 .server-panel {
   position: static;
   text-align: right;

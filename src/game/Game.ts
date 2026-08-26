@@ -533,17 +533,23 @@ export class Game {
     this.fallOutTimer = 0;
     this.controller.teleport(this.respawnPoint());
     this.cam.snap(this.controller.pos);
+    this.hud.setFallOut(null);
     this.hud.fallToast();
   }
 
   private checkFall(dt: number): void {
-    if (this.controller.flyMode) return;
+    if (this.controller.flyMode) {
+      this.hud.setFallOut(null);
+      return;
+    }
     if (this.vehicle.seatOf('me') >= 0) {
       this.fallOutTimer = 0;
+      this.hud.setFallOut(null);
       return;
     }
     if (this.controller.carriedBy) {
       this.fallOutTimer = 0;
+      this.hud.setFallOut(null);
       return;
     }
     if (this.pendingFlyLand && this.controller.onGround) {
@@ -557,12 +563,16 @@ export class Game {
     // means 4s of dropping with no course underfoot (dirt does not count).
     if (onCourse) {
       this.fallOutTimer = 0;
+      this.hud.setFallOut(null);
       return;
     }
     const falling = this.controller.vel.y < -1.5;
     const onDirt = this.controller.onGround && this.controller.standingOnName === 'Earth Ground';
     if (falling || onDirt) this.fallOutTimer += dt;
     else if (this.controller.vel.y >= 0) this.fallOutTimer = 0;
+
+    if (this.fallOutTimer > 0.08) this.hud.setFallOut(4 - this.fallOutTimer);
+    else this.hud.setFallOut(null);
 
     if (this.fallOutTimer >= 4 || this.controller.pos.y < -12) this.resetToCheckpoint();
   }
