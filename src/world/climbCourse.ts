@@ -81,6 +81,7 @@ export interface ClimbApi {
   ): THREE.Mesh;
   addConvoyCrate(side: number): void;
   addErrorWorld(x: number, y: number, z: number, dx: number, dz: number): void;
+  addErrorWorldSign(x: number, y: number, z: number): void;
 }
 
 const PALETTE = [0xb5651d, 0x9c6b30, 0xcfa15a, 0x7e57c2, 0x5c6bc0, 0x26a69a, 0xeceff1, 0xffd54f];
@@ -202,6 +203,7 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const drdth = dR / dTheta;
 
   api.addBox(parkW, slabH, parkD, 0, y, z, 0x3a3a36, { name: 'Motor Pool' });
+  api.addErrorWorldSign(0, y + 9.2, z + parkD * 0.28);
   api.addSign(
     ['MOTOR POOL', 'E to drive. Weave past the wood crates.', 'The road falls behind you — one slab a second.'],
     -8.2, y + 3.4, z - 1.5, 0.9

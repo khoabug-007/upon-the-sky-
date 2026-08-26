@@ -963,6 +963,13 @@ export class WorldMap {
     this.scene.add(s);
   }
 
+  /** Title board at the start of the convoy highway. */
+  private addErrorWorldSign(x: number, y: number, z: number): void {
+    const title = makeErrorWorldSign();
+    title.position.set(x, y, z);
+    this.scene.add(title);
+  }
+
   /** Level 50 plaza: title, vanishing outer tiles, rifts, oversized warped watches. */
   private addErrorWorld(x: number, y: number, z: number, dx: number, dz: number): void {
     this.errorWorldOrigin.set(x, y, z);
@@ -982,11 +989,6 @@ export class WorldMap {
         }
       }
     }
-
-    const title = makeErrorWorldSign();
-    const side = { x: -dz, z: dx };
-    title.position.set(x + side.x * 0.4, y + 9.2, z + side.z * 0.4);
-    this.scene.add(title);
 
     this.addErrorRifts(x, y, z, dx, dz);
     this.addErrorWatches(x, y, z, dx, dz);
@@ -1541,7 +1543,8 @@ export class WorldMap {
       },
       addOrientedSlab: this.addOrientedSlab.bind(this),
       addConvoyCrate: this.addConvoyCrate.bind(this),
-      addErrorWorld: this.addErrorWorld.bind(this)
+      addErrorWorld: this.addErrorWorld.bind(this),
+      addErrorWorldSign: this.addErrorWorldSign.bind(this)
     };
   }
 

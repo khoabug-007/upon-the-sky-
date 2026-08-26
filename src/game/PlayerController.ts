@@ -143,7 +143,10 @@ export class PlayerController {
     this.vel.x += (desiredX - this.vel.x) * (this.onGround ? Math.min(1, 42 * dt / 8) : k);
     this.vel.z += (desiredZ - this.vel.z) * (this.onGround ? Math.min(1, 42 * dt / 8) : k);
 
-    if (hasInput) {
+    if (cam.shiftLock) {
+      cam.forward(this.tmpF);
+      this.facing = Math.atan2(this.tmpF.x, this.tmpF.z);
+    } else if (hasInput) {
       const targetFacing = Math.atan2(move.x, move.z);
       let diff = targetFacing - this.facing;
       while (diff > Math.PI) diff -= Math.PI * 2;

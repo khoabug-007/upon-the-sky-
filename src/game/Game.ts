@@ -51,6 +51,7 @@ export class Game {
   private pendingFlyLand = false;
   private afterFlyRefY: number | null = null;
   private running = true;
+  private paused = false;
   private renderPos = new THREE.Vector3();
   private shadowTick = 0;
 
@@ -118,6 +119,12 @@ export class Game {
 
     this.hud.setServer(joinInfo.name ?? 'Server', joinInfo.code ?? '------');
     this.hud.onCommand = (command) => this.handleChatCommand(command);
+    this.hud.onPauseChange = (paused) => {
+      this.paused = paused;
+      this.cam.pointerLockEnabled = !paused;
+      this.input.clear();
+      if (paused && document.pointerLockElement) document.exitPointerLock();
+    };
     this.hud.onPlayAgain = () => {
       this.currentCheckpoint = -1;
       localStorage.removeItem(PROGRESS_KEY);
@@ -753,6 +760,7 @@ export class Game {
     }
 
     this.updateProps(dt);
+    this.refreshShiftLock();
     this.checkCheckpoints();
     this.checkFall();
     this.checkEnding();
@@ -772,10 +780,25 @@ export class Game {
     this.input.endFrame();
   }
 
+  private refreshShiftLock(): void {
+    const seated = this.vehicle.seatOf('me') >= 0;
+    const on = !seated && !!(this.carryingId || this.heldProp);
+    this.cam.setShiftLock(on);
+    this.hud.setShiftLock(on);
+  }
+
   private loop = (): void => {
     if (!this.running) return;
     requestAnimationFrame(this.loop);
     const rawDt = Math.min(this.clock.getDelta(), 0.05);
+    if (this.paused) {
+      this.accumulator = 0;
+      this.hud.setAltitude(this.controller.pos.y);
+      this.hud.setStandingOn(this.controller.standingOnName);
+      this.renderer.render(this.scene, this.cam.camera);
+      return;
+    }
+
     this.accumulator += rawDt;
     while (this.accumulator >= FIXED_DT) {
       this.fixedUpdate(FIXED_DT);

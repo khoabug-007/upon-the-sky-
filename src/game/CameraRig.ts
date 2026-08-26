@@ -5,12 +5,17 @@ export class CameraRig {
   yaw = Math.PI; // face the course at spawn
   pitch = 0.32;
   dist = 6.5;
+  /** Over-the-shoulder lock while carrying a prop or another player. */
+  shiftLock = false;
   private look = new THREE.Vector3(0, 1.3, 0);
   private lookReady = false;
+  private shoulder = new THREE.Vector3();
+  pointerLockEnabled = true;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 80000);
     canvas.addEventListener('click', () => {
+      if (!this.pointerLockEnabled) return;
       if (document.pointerLockElement !== canvas) canvas.requestPointerLock();
     });
     window.addEventListener('mousemove', (e) => {
@@ -57,23 +62,36 @@ export class CameraRig {
     }
 
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
-    this.camera.position.set(
-      this.look.x + Math.sin(this.yaw) * cp * this.dist,
-      this.look.y + 0.1 + sp * this.dist,
-      this.look.z + Math.cos(this.yaw) * cp * this.dist
-    );
-    this.camera.lookAt(this.look);
+    this.placeCamera(cp, sp);
+  }
+
+  setShiftLock(on: boolean): void {
+    if (this.shiftLock === on) return;
+    this.shiftLock = on;
+    if (on && this.pointerLockEnabled && document.pointerLockElement !== this.canvas) {
+      this.canvas.requestPointerLock();
+    }
   }
 
   snap(target: THREE.Vector3): void {
     this.look.set(target.x, target.y + 1.3, target.z);
     this.lookReady = true;
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
+    this.placeCamera(cp, sp);
+  }
+
+  private placeCamera(cp: number, sp: number): void {
+    const shoulder = this.shiftLock ? 1.35 : 0;
+    this.right(this.shoulder).multiplyScalar(shoulder);
     this.camera.position.set(
-      this.look.x + Math.sin(this.yaw) * cp * this.dist,
+      this.look.x + Math.sin(this.yaw) * cp * this.dist + this.shoulder.x,
       this.look.y + 0.1 + sp * this.dist,
-      this.look.z + Math.cos(this.yaw) * cp * this.dist
+      this.look.z + Math.cos(this.yaw) * cp * this.dist + this.shoulder.z
     );
-    this.camera.lookAt(this.look);
+    this.camera.lookAt(
+      this.look.x + this.shoulder.x,
+      this.look.y,
+      this.look.z + this.shoulder.z
+    );
   }
 }
