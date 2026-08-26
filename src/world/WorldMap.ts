@@ -67,7 +67,8 @@ interface ConvoySeg {
   fallVel: number;
 }
 
-const CRATE_SIZE = 8;
+const CRATE_W = 3.4;
+const CRATE_D = 2.2;
 const CRATE_H = 3.6;
 const CONVOY_DROP_EVERY = 1;
 const CONVOY_KEEP_END = 2;
@@ -234,7 +235,7 @@ export class WorldMap {
   private convoyArmed = false;
   private convoyDropAcc = 0;
   private convoyNext = CONVOY_SKIP_START;
-  private crateGeo = new THREE.BoxGeometry(CRATE_SIZE, CRATE_H, CRATE_SIZE);
+  private crateGeo = new THREE.BoxGeometry(CRATE_W, CRATE_H, CRATE_D);
   private crateMat = mat(0xb5651d);
   private roadBit = new THREE.BoxGeometry(1, 1, 1);
   private curbMat = new THREE.MeshStandardMaterial({ color: 0x6a645c, roughness: 0.92 });
@@ -385,14 +386,15 @@ export class WorldMap {
     }
   }
 
-  /** Square wood block covering one half of the last convoy slab, leaving a drive lane. */
+  /** Wood block on one side of the last convoy slab, with a clear truck lane. */
   private addConvoyCrate(side: number): void {
     const host = this.convoySegs[this.convoySegs.length - 1];
     if (!host || host.collider.halfW === undefined || host.collider.yaw === undefined) return;
     const yaw = host.collider.yaw;
     const roadHalf = host.collider.halfW;
-    const crateHalf = CRATE_SIZE / 2;
-    const across = Math.sign(side || 1) * (roadHalf - crateHalf);
+    const crateHalfW = CRATE_W / 2;
+    const crateHalfD = CRATE_D / 2;
+    const across = Math.sign(side || 1) * (roadHalf - crateHalfW);
     const mesh = new THREE.Mesh(this.crateGeo, this.crateMat);
     mesh.name = 'Wood Crate';
     mesh.castShadow = true;
@@ -403,8 +405,8 @@ export class WorldMap {
     const wp = new THREE.Vector3();
     mesh.getWorldPosition(wp);
     const c = Math.cos(yaw), s = Math.sin(yaw);
-    const xs = [crateHalf, crateHalf, -crateHalf, -crateHalf];
-    const zs = [crateHalf, -crateHalf, crateHalf, -crateHalf];
+    const xs = [crateHalfW, crateHalfW, -crateHalfW, -crateHalfW];
+    const zs = [crateHalfD, -crateHalfD, crateHalfD, -crateHalfD];
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
     for (let i = 0; i < 4; i++) {
       const wx = wp.x + xs[i]! * c + zs[i]! * s;
@@ -419,8 +421,8 @@ export class WorldMap {
       yaw,
       cx: wp.x,
       cz: wp.z,
-      halfW: crateHalf,
-      halfD: crateHalf
+      halfW: crateHalfW,
+      halfD: crateHalfD
     });
     host.crates.push({ mesh, collider: this.colliders[this.colliders.length - 1]! });
   }
