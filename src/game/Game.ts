@@ -50,7 +50,7 @@ export class Game {
   private endingTriggered = false;
   private pendingFlyLand = false;
   private afterFlyRefY: number | null = null;
-  private lastSafeY = 0;
+  private fallOutTimer = 0;
   private running = true;
   private paused = false;
   private shiftLockHeld = false;
@@ -112,14 +112,10 @@ export class Game {
       }
     }
     this.controller.teleport(this.respawnPoint());
-    this.lastSafeY = this.controller.pos.y;
     this.cam.snap(this.controller.pos);
     this.hud.setProgress(this.currentCheckpoint + 1, this.world.checkpoints.length);
 
-    this.controller.onBounce = () => {
-      this.lastSafeY = this.controller.pos.y;
-      this.hud.toast('BOING!', 900);
-    };
+    this.controller.onBounce = () => this.hud.toast('BOING!', 900);
     this.controller.onRotorHit = () => this.hud.toast('BONK! The bar strikes again.', 2000);
     this.controller.onBallHit = () => this.hud.toast('BONK! A marble!', 1400);
 
@@ -140,7 +136,6 @@ export class Game {
       this.pendingFlyLand = false;
       this.afterFlyRefY = null;
       this.controller.teleport(this.world.spawnPos);
-      this.lastSafeY = this.controller.pos.y;
       this.cam.snap(this.controller.pos);
       this.hud.toast('Back to the dirt. The sky remembers you.');
     };
@@ -535,29 +530,41 @@ export class Game {
   private resetToCheckpoint(): void {
     this.afterFlyRefY = null;
     this.pendingFlyLand = false;
+    this.fallOutTimer = 0;
     this.controller.teleport(this.respawnPoint());
-    this.lastSafeY = this.controller.pos.y;
     this.cam.snap(this.controller.pos);
     this.hud.fallToast();
   }
 
-  private checkFall(): void {
+  private checkFall(dt: number): void {
     if (this.controller.flyMode) return;
-    if (this.vehicle.seatOf('me') >= 0) return;
-    if (this.pendingFlyLand) {
-      if (this.controller.onGround) {
-        this.pendingFlyLand = false;
-        this.afterFlyRefY = this.controller.pos.y;
-        this.lastSafeY = this.controller.pos.y;
-      }
-    }
-    const y = this.controller.pos.y;
-    const onDirt = this.controller.onGround && this.controller.standingOnName === 'Earth Ground';
-    if (y < this.lastSafeY - 10 || y < -12 || (onDirt && this.lastSafeY > 5)) {
-      this.resetToCheckpoint();
+    if (this.vehicle.seatOf('me') >= 0) {
+      this.fallOutTimer = 0;
       return;
     }
-    if (this.controller.onGround && !onDirt) this.lastSafeY = y;
+    if (this.controller.carriedBy) {
+      this.fallOutTimer = 0;
+      return;
+    }
+    if (this.pendingFlyLand && this.controller.onGround) {
+      this.pendingFlyLand = false;
+      this.afterFlyRefY = this.controller.pos.y;
+    }
+
+    const onCourse = this.controller.onGround
+      && this.controller.standingOnName !== 'Earth Ground';
+    // Jumping down onto the next pad lands quickly. Falling out of the course
+    // means 4s of dropping with no course underfoot (dirt does not count).
+    if (onCourse) {
+      this.fallOutTimer = 0;
+      return;
+    }
+    const falling = this.controller.vel.y < -1.5;
+    const onDirt = this.controller.onGround && this.controller.standingOnName === 'Earth Ground';
+    if (falling || onDirt) this.fallOutTimer += dt;
+    else if (this.controller.vel.y >= 0) this.fallOutTimer = 0;
+
+    if (this.fallOutTimer >= 4 || this.controller.pos.y < -12) this.resetToCheckpoint();
   }
 
   private checkEnding(): void {
@@ -778,7 +785,7 @@ export class Game {
     this.updateProps(dt);
     this.refreshShiftLock();
     this.checkCheckpoints();
-    this.checkFall();
+    this.checkFall(dt);
     this.checkEnding();
 
     // network state @20Hz
