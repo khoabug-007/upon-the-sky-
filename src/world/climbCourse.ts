@@ -203,7 +203,10 @@ function buildConvoyHighway(api: ClimbApi, y: number, z: number) {
   const drdth = dR / dTheta;
 
   api.addBox(parkW, slabH, parkD, 0, y, z, 0x3a3a36, { name: 'Motor Pool' });
-  api.addErrorWorldSign(0, y + 9.2, z + parkD * 0.28);
+  const signZ = z - parkD / 2 + 1.4;
+  api.addBox(0.38, 4.4, 0.38, -4.6, y + 2.2, signZ, 0x3a2e1a, { name: 'Error World Sign Post' });
+  api.addBox(0.38, 4.4, 0.38, 4.6, y + 2.2, signZ, 0x3a2e1a, { name: 'Error World Sign Post' });
+  api.addErrorWorldSign(0, y + 5.35, signZ);
   api.addSign(
     ['MOTOR POOL', 'E to drive. Weave past the wood crates.', 'The road falls behind you — one slab a second.'],
     -8.2, y + 3.4, z - 1.5, 0.9

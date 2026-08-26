@@ -52,6 +52,7 @@ export class Game {
   private afterFlyRefY: number | null = null;
   private running = true;
   private paused = false;
+  private shiftLockHeld = false;
   private renderPos = new THREE.Vector3();
   private shadowTick = 0;
 
@@ -783,6 +784,8 @@ export class Game {
   private refreshShiftLock(): void {
     const seated = this.vehicle.seatOf('me') >= 0;
     const on = !seated && !!(this.carryingId || this.heldProp);
+    if (on && !this.shiftLockHeld) this.hud.toast('Shift lock on. Press B to throw.', 2200);
+    this.shiftLockHeld = on;
     this.cam.setShiftLock(on);
     this.hud.setShiftLock(on);
   }

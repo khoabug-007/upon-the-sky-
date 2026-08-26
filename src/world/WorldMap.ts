@@ -190,7 +190,7 @@ function makeErrorWorldSign(): THREE.Sprite {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
     map: new THREE.CanvasTexture(canvas), transparent: true
   }));
-  sprite.scale.set(22, 6.9, 1);
+  sprite.scale.set(9.4, 2.95, 1);
   return sprite;
 }
 
