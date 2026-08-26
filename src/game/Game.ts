@@ -50,6 +50,7 @@ export class Game {
   private endingTriggered = false;
   private pendingFlyLand = false;
   private afterFlyRefY: number | null = null;
+  private lastSafeY = 0;
   private running = true;
   private paused = false;
   private shiftLockHeld = false;
@@ -111,10 +112,14 @@ export class Game {
       }
     }
     this.controller.teleport(this.respawnPoint());
+    this.lastSafeY = this.controller.pos.y;
     this.cam.snap(this.controller.pos);
     this.hud.setProgress(this.currentCheckpoint + 1, this.world.checkpoints.length);
 
-    this.controller.onBounce = () => this.hud.toast('BOING!', 900);
+    this.controller.onBounce = () => {
+      this.lastSafeY = this.controller.pos.y;
+      this.hud.toast('BOING!', 900);
+    };
     this.controller.onRotorHit = () => this.hud.toast('BONK! The bar strikes again.', 2000);
     this.controller.onBallHit = () => this.hud.toast('BONK! A marble!', 1400);
 
@@ -135,6 +140,7 @@ export class Game {
       this.pendingFlyLand = false;
       this.afterFlyRefY = null;
       this.controller.teleport(this.world.spawnPos);
+      this.lastSafeY = this.controller.pos.y;
       this.cam.snap(this.controller.pos);
       this.hud.toast('Back to the dirt. The sky remembers you.');
     };
@@ -526,23 +532,32 @@ export class Game {
     }
   }
 
+  private resetToCheckpoint(): void {
+    this.afterFlyRefY = null;
+    this.pendingFlyLand = false;
+    this.controller.teleport(this.respawnPoint());
+    this.lastSafeY = this.controller.pos.y;
+    this.cam.snap(this.controller.pos);
+    this.hud.fallToast();
+  }
+
   private checkFall(): void {
     if (this.controller.flyMode) return;
+    if (this.vehicle.seatOf('me') >= 0) return;
     if (this.pendingFlyLand) {
       if (this.controller.onGround) {
         this.pendingFlyLand = false;
         this.afterFlyRefY = this.controller.pos.y;
+        this.lastSafeY = this.controller.pos.y;
       }
+    }
+    const y = this.controller.pos.y;
+    const onDirt = this.controller.onGround && this.controller.standingOnName === 'Earth Ground';
+    if (y < this.lastSafeY - 10 || y < -12 || (onDirt && this.lastSafeY > 5)) {
+      this.resetToCheckpoint();
       return;
     }
-    if (this.vehicle.seatOf('me') >= 0) return;
-    const cpY = this.currentCheckpoint >= 0 ? this.world.checkpoints[this.currentCheckpoint].pos.y : 0;
-    const refY = this.afterFlyRefY ?? cpY;
-    if (this.controller.pos.y < refY - 45 || this.controller.pos.y < -22) {
-      this.afterFlyRefY = null;
-      this.controller.teleport(this.respawnPoint());
-      this.hud.fallToast();
-    }
+    if (this.controller.onGround && !onDirt) this.lastSafeY = y;
   }
 
   private checkEnding(): void {
