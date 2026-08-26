@@ -78,11 +78,17 @@ export class HUD {
       </div>
       <div class="shift-lock hidden" id="hud-shift-lock" aria-hidden="true"></div>
       <div class="hud-right">
-        <form class="admin-chat" id="hud-chat-form" autocomplete="off">
-          <input id="hud-chat" class="admin-chat-input" type="text" maxlength="48"
-            placeholder="Command…" spellcheck="false" />
-          <button type="submit" class="admin-chat-go" id="hud-chat-go">GO</button>
-        </form>
+        <div class="hud-right-top">
+          <div class="fall-out hidden" id="hud-fall-out">
+            <div class="fall-out-kicker">Fell off</div>
+            <div class="fall-out-count" id="hud-fall-out-count">10</div>
+          </div>
+          <form class="admin-chat" id="hud-chat-form" autocomplete="off">
+            <input id="hud-chat" class="admin-chat-input" type="text" maxlength="48"
+              placeholder="Command…" spellcheck="false" />
+            <button type="submit" class="admin-chat-go" id="hud-chat-go">GO</button>
+          </form>
+        </div>
         <div class="server-panel">
           <div class="server-name" id="hud-server-name"></div>
           <div class="server-code" id="hud-server-code" title="Click to copy the code"></div>
@@ -103,11 +109,6 @@ export class HUD {
         <div class="struggle-hint">CLICK</div>
       </div>
       <div class="toast hidden" id="hud-toast"></div>
-      <div class="fall-out hidden" id="hud-fall-out">
-        <div class="fall-out-kicker">Fell off</div>
-        <div class="fall-out-count" id="hud-fall-out-count">4</div>
-        <div class="fall-out-hint">Back to checkpoint</div>
-      </div>
       <div class="ending-overlay hidden" id="hud-ending"></div>
     `;
     this.toastEl = document.getElementById('hud-toast')!;

@@ -14,6 +14,7 @@ const PROGRESS_KEY = 'uts_progress';
 const FIXED_DT = 1 / 60;
 const STRUGGLE_CLICKS = 8;
 const PICKUP_IMMUNE_MS = 3000;
+const FALL_OUT_SECONDS = 10;
 
 const GROUND_SKY = new THREE.Color(0x87ceeb);
 const HIGH_SKY = new THREE.Color(0x2c3a8f);
@@ -560,7 +561,7 @@ export class Game {
     const onCourse = this.controller.onGround
       && this.controller.standingOnName !== 'Earth Ground';
     // Jumping down onto the next pad lands quickly. Falling out of the course
-    // means 4s of dropping with no course underfoot (dirt does not count).
+    // means FALL_OUT_SECONDS of dropping with no course underfoot (dirt does not count).
     if (onCourse) {
       this.fallOutTimer = 0;
       this.hud.setFallOut(null);
@@ -571,10 +572,10 @@ export class Game {
     if (falling || onDirt) this.fallOutTimer += dt;
     else if (this.controller.vel.y >= 0) this.fallOutTimer = 0;
 
-    if (this.fallOutTimer > 0.08) this.hud.setFallOut(4 - this.fallOutTimer);
+    if (this.fallOutTimer > 0.08) this.hud.setFallOut(FALL_OUT_SECONDS - this.fallOutTimer);
     else this.hud.setFallOut(null);
 
-    if (this.fallOutTimer >= 4 || this.controller.pos.y < -12) this.resetToCheckpoint();
+    if (this.fallOutTimer >= FALL_OUT_SECONDS || this.controller.pos.y < -12) this.resetToCheckpoint();
   }
 
   private checkEnding(): void {
