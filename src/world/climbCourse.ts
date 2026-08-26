@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ufoDeckSize } from './ufoCraft';
 
 /** Copied from PlayerController jump budget so this file does not import Game physics. */
 const JUMP_DIST_RUN = 7.68;
@@ -90,6 +91,15 @@ export interface ClimbApi {
   addConvoyCrate(side: number): void;
   addErrorWorld(x: number, y: number, z: number, dx: number, dz: number): void;
   addErrorWorldSign(x: number, y: number, z: number): void;
+  addUfo(
+    kind: 'saucer' | 'delta',
+    a: THREE.Vector3,
+    b: THREE.Vector3,
+    speed?: number,
+    phase?: number,
+    yaw?: number,
+    name?: string
+  ): void;
 }
 
 const PALETTE = [0xb5651d, 0x9c6b30, 0xcfa15a, 0x7e57c2, 0x5c6bc0, 0x26a69a, 0xeceff1, 0xffd54f];
@@ -347,7 +357,7 @@ function reverseSpin(
   return { x: ex, y, z: ez };
 }
 
-/** Levels 60–67: 50 rebounders climb a sharp Z — mostly left/right, each bounce just reaching the next. */
+/** Levels 60–67: pink rebounders, then two UFO ferries to the flag. */
 function reboundRows(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number
@@ -366,7 +376,7 @@ function reboundRows(
   const sz = z + dz * startAlong;
   api.addBox(sw, 1, sd, sx, y, sz, color, { name: 'Level 60' });
   api.addSign(
-    ['Zigzag up the pink pads.', 'Walk into each bounce.'],
+    ['Zigzag up the pink pads.', 'Ride the UFOs to the flag.'],
     sx - dz * 5.5, y + 3.2, sz + dx * 5.5, 0.75
   );
   flagAt(api, sx, y + 0.5, sz, 'Level 60', true);
@@ -383,12 +393,56 @@ function reboundRows(
     };
   };
 
-  for (let i = 0; i < REBOUND_COUNT; i++) {
+  const padCount = REBOUND_COUNT - 4;
+  for (let i = 0; i < padCount; i++) {
     const p = spot(i);
     api.addTrampoline(p.x, p.y, p.z, REBOUND_R, `Rebounder ${i + 1}`);
   }
 
+  const last = spot(padCount - 1);
   const end = spot(REBOUND_COUNT);
+  const yaw = Math.atan2(dx, dz);
+  const left = sideOf(dx, dz, -1);
+  const right = sideOf(dx, dz, 1);
+  const saucer = ufoDeckSize('saucer');
+  const delta = ufoDeckSize('delta');
+  const padHalf = 3.1;
+  const lowAlong = firstAlong + (padCount + 0.8) * alongStep;
+  const clusterY = last.y;
+  const deckLift = (h: number) => clusterY + 0.5 - h / 2;
+  const highLift = (h: number) => end.y + 0.5 - h / 2;
+  const lowSide = sideAmp + 5.4;
+  const highGap = (half: number) => padHalf + WALK_HOP_GAP + half;
+
+  api.addUfo(
+    'saucer',
+    new THREE.Vector3(
+      ox + dx * lowAlong + left.x * lowSide,
+      deckLift(saucer.y),
+      z + dz * lowAlong + left.z * lowSide
+    ),
+    new THREE.Vector3(
+      end.x + left.x * highGap(saucer.x / 2),
+      highLift(saucer.y),
+      end.z + left.z * highGap(saucer.x / 2)
+    ),
+    0.38, 0, yaw, 'Saucer UFO'
+  );
+  api.addUfo(
+    'delta',
+    new THREE.Vector3(
+      ox + dx * lowAlong + right.x * lowSide,
+      deckLift(delta.y),
+      z + dz * lowAlong + right.z * lowSide
+    ),
+    new THREE.Vector3(
+      end.x + right.x * highGap(delta.x / 2),
+      highLift(delta.y),
+      end.z + right.z * highGap(delta.x / 2)
+    ),
+    0.38, Math.PI, yaw, 'Triangle UFO'
+  );
+
   const { w: ew, d: ed } = padDimsAlongTravel(dx, dz, 6.2, 6.2);
   api.addBox(ew, 1, ed, end.x, end.y, end.z, color, { name: 'Level 67' });
   flagAt(api, end.x, end.y + 0.5, end.z, 'Level 67', true);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { gltfLoader } from '../render/gltf';
 import { appendClimbLevels, placeThrowGate, type ClimbApi, type ThrowSwitch } from './climbCourse';
 import { isLiftName, isSteelPad, lookMaterial } from './looks';
+import { buildUfoCraft, ufoDeckSize, type UfoKind } from './ufoCraft';
 
 export interface BoxCollider {
   min: THREE.Vector3;
@@ -687,6 +688,44 @@ export class WorldMap {
     this.movers.push({ mesh, collider, a: a.clone(), b: b.clone(), speed, phase, size, delta: new THREE.Vector3() });
   }
 
+  /** Large walkable UFO that ferries the player between two points. */
+  private addUfo(
+    kind: UfoKind,
+    a: THREE.Vector3,
+    b: THREE.Vector3,
+    speed = 0.42,
+    phase = 0,
+    yaw = 0,
+    name = 'UFO'
+  ): void {
+    const size = ufoDeckSize(kind);
+    const visual = buildUfoCraft(kind);
+    visual.rotation.y = yaw;
+    visual.position.set(a.x, a.y + size.y / 2, a.z);
+    this.scene.add(visual);
+
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(size.x, size.y, size.z),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    mesh.position.copy(a);
+    mesh.name = name;
+    mesh.userData.cloud = visual;
+    mesh.userData.yOffset = size.y / 2;
+    this.scene.add(mesh);
+
+    const collider: BoxCollider = {
+      min: a.clone().sub(size.clone().multiplyScalar(0.5)),
+      max: a.clone().add(size.clone().multiplyScalar(0.5)),
+      moverIndex: this.movers.length,
+      name
+    };
+    this.colliders.push(collider);
+    this.movers.push({
+      mesh, collider, a: a.clone(), b: b.clone(), speed, phase, size, delta: new THREE.Vector3()
+    });
+  }
+
   private addRotor(
     x: number, y: number, z: number, armLength: number, speed: number,
     color = 0xe74c3c, startAngle?: number
@@ -1247,7 +1286,7 @@ export class WorldMap {
     return { p, dir };
   }
 
-  /** Level 60 pad, rebounders in order, Level 67 pad — the zigzag climb. */
+  /** Level 60 pad, rebounders, UFOs, Level 67 pad — the zigzag climb. */
   private collectZigzagWatchSpine(): THREE.Vector3[] {
     const center = (c: BoxCollider) => new THREE.Vector3(
       (c.min.x + c.max.x) * 0.5, c.max.y, (c.min.z + c.max.z) * 0.5
@@ -1271,6 +1310,9 @@ export class WorldMap {
     const pts: THREE.Vector3[] = [];
     if (start) pts.push(start);
     pts.push(...pads);
+    for (const c of this.colliders) {
+      if (/UFO$/i.test(c.name ?? '')) pts.push(center(c));
+    }
     if (end) pts.push(end);
     return pts;
   }
@@ -1547,7 +1589,8 @@ export class WorldMap {
       addOrientedSlab: this.addOrientedSlab.bind(this),
       addConvoyCrate: this.addConvoyCrate.bind(this),
       addErrorWorld: this.addErrorWorld.bind(this),
-      addErrorWorldSign: this.addErrorWorldSign.bind(this)
+      addErrorWorldSign: this.addErrorWorldSign.bind(this),
+      addUfo: this.addUfo.bind(this)
     };
   }
 
@@ -1971,6 +2014,8 @@ export class WorldMap {
       if (cloud) {
         cloud.position.x = nx;
         cloud.position.z = nz;
+        const yOff = m.mesh.userData.yOffset as number | undefined;
+        if (yOff !== undefined) cloud.position.y = ny + yOff;
       }
       m.collider.min.set(nx - m.size.x / 2, ny - m.size.y / 2, nz - m.size.z / 2);
       m.collider.max.set(nx + m.size.x / 2, ny + m.size.y / 2, nz + m.size.z / 2);
