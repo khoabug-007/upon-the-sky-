@@ -14,6 +14,8 @@ const GRAVITY_MAG = 24;
 const SPACE_GRAVITY_MAG = 7.5;
 const REBOUND_R = 1.45;
 const REBOUND_COUNT = 50;
+/** Sine speed for both UFO ferries. Lower = slower (was 0.38). */
+const UFO_SPEED = 0.12;
 /** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
 const WALK_HOP_GAP = 2.2;
 const PAD = 3.1;
@@ -420,7 +422,7 @@ function reboundRows(
       highLift(saucer.y),
       end.z + left.z * highGap(saucer.x / 2)
     ),
-    0.38, 0, yaw, 'Saucer UFO'
+    UFO_SPEED, 0, yaw, 'Saucer UFO'
   );
   api.addUfo(
     'delta',
@@ -434,7 +436,7 @@ function reboundRows(
       highLift(delta.y),
       end.z + right.z * highGap(delta.x / 2)
     ),
-    0.38, Math.PI, yaw, 'Triangle UFO'
+    UFO_SPEED, Math.PI, yaw, 'Triangle UFO'
   );
 
   const { w: ew, d: ed } = padDimsAlongTravel(dx, dz, 6.2, 6.2);
