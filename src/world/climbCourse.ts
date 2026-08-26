@@ -357,7 +357,7 @@ function reverseSpin(
   return { x: ex, y, z: ez };
 }
 
-/** Levels 60–67: pink rebounders, then two UFO ferries to the flag. */
+/** Levels 60–67: two UFO ferries from the Level 60 pad to the flag. */
 function reboundRows(
   api: ClimbApi, ox: number, y: number, z: number,
   dx: number, dz: number, color: number
@@ -376,7 +376,7 @@ function reboundRows(
   const sz = z + dz * startAlong;
   api.addBox(sw, 1, sd, sx, y, sz, color, { name: 'Level 60' });
   api.addSign(
-    ['Zigzag up the pink pads.', 'Ride the UFOs to the flag.'],
+    ['Hop onto a UFO.', 'Ride it to the flag.'],
     sx - dz * 5.5, y + 3.2, sz + dx * 5.5, 0.75
   );
   flagAt(api, sx, y + 0.5, sz, 'Level 60', true);
@@ -393,13 +393,7 @@ function reboundRows(
     };
   };
 
-  const padCount = REBOUND_COUNT - 4;
-  for (let i = 0; i < padCount; i++) {
-    const p = spot(i);
-    api.addTrampoline(p.x, p.y, p.z, REBOUND_R, `Rebounder ${i + 1}`);
-  }
-
-  const last = spot(padCount - 1);
+  // The four pink pads you see from Level 60 become two UFO ferries.
   const end = spot(REBOUND_COUNT);
   const yaw = Math.atan2(dx, dz);
   const left = sideOf(dx, dz, -1);
@@ -407,11 +401,11 @@ function reboundRows(
   const saucer = ufoDeckSize('saucer');
   const delta = ufoDeckSize('delta');
   const padHalf = 3.1;
-  const lowAlong = firstAlong + (padCount + 0.8) * alongStep;
-  const clusterY = last.y;
-  const deckLift = (h: number) => clusterY + 0.5 - h / 2;
+  const startTop = y + 0.5;
+  const lowAlong = startAlong + startHalf + WALK_HOP_GAP + saucer.x / 2;
+  const lowSide = 5.6;
+  const deckLift = (h: number) => startTop - h / 2;
   const highLift = (h: number) => end.y + 0.5 - h / 2;
-  const lowSide = sideAmp + 5.4;
   const highGap = (half: number) => padHalf + WALK_HOP_GAP + half;
 
   api.addUfo(
