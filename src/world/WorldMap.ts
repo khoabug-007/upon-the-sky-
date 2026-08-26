@@ -647,9 +647,10 @@ export class WorldMap {
     pad.castShadow = true;
     pad.receiveShadow = true;
     this.scene.add(pad);
+    const hitR = r * 1.12;
     this.colliders.push({
-      min: new THREE.Vector3(x - r * 0.95, y, z - r * 0.95),
-      max: new THREE.Vector3(x + r * 0.95, y + 0.5, z + r * 0.95),
+      min: new THREE.Vector3(x - hitR, y, z - hitR),
+      max: new THREE.Vector3(x + hitR, y + 0.5, z + hitR),
       bouncy: true,
       name
     });

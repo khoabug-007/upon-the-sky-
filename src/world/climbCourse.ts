@@ -364,7 +364,8 @@ function reboundRows(
   const firstAlong = startAlong + startHalf + WALK_HOP_GAP + REBOUND_R;
   const spot = (i: number) => {
     const along = firstAlong + i * alongStep;
-    const side = sideOf(dx, dz, (i % 2 === 0 ? -sideAmp : sideAmp));
+    const zig = i === 0 ? 0 : (i % 2 === 0 ? -sideAmp : sideAmp);
+    const side = sideOf(dx, dz, zig);
     return {
       x: ox + dx * along + side.x,
       y: y + i * rise,

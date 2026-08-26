@@ -276,6 +276,9 @@ export class PlayerController {
       const solidWall = boxH > 2.2;
 
       if (axis === 'x' || axis === 'z') {
+        // Trampolines only bounce on Y. Side-ejecting them zeros walk speed
+        // and strands the zigzag rebound chain.
+        if (c.bouncy) continue;
         // Floor top: do not treat as a wall.
         if (this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN) continue;
         // Higher pad that only the head/torso reaches (clouds/blocks stacked 1.5m, player ~1.7m).
