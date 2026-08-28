@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { ufoDeckSize } from './ufoCraft';
 
 /** Copied from PlayerController jump budget so this file does not import Game physics. */
-const JUMP_DIST_RUN = 7.68;
+const JUMP_DIST_RUN = 7.37;
 const JUMP_HEIGHT_SAFE = 1.55;
+/** Unassisted pad-to-pad rise. Must stay under stand jump (1.84 m) with walk-gap airtime. */
+const JUMP_STEP = 1.35;
 const SPACE_JUMP_HEIGHT_SAFE = 7.0;
 
 const SPACE_BAND_Y = 88;
@@ -18,7 +20,7 @@ const UFO_SPEED = 0.035;
 /** Short diagonal so the ride crawls instead of covering the old 50-pad climb. */
 const UFO_CLIMB = 14;
 const UFO_ALONG = 12;
-/** Walk hop at +1.5 m: 3.23 m air, minus radii → keep edge gaps at 2.2 m. */
+/** Walk hop at +JUMP_STEP: ~2.2 m air, matching the one-block edge gap. */
 const WALK_HOP_GAP = 2.2;
 const PAD = 3.1;
 /** Along-travel pad length: 3× the previous live scale (2/3). */
@@ -141,7 +143,7 @@ export function appendClimbLevels(
     const inSpace = y > SPACE_BAND_Y;
     const rise = inSpace
       ? Math.min(4.8 + hard * 1.4, SPACE_JUMP_HEIGHT_SAFE - 0.6)
-      : Math.min(1.35 + hard * 0.2, JUMP_HEIGHT_SAFE);
+      : Math.min(1.15 + hard * 0.2, JUMP_STEP);
     const color = PALETTE[i % PALETTE.length];
     if (placed === 16 && flag) {
       const hwy = buildConvoyHighway(api, y, z);
@@ -310,7 +312,7 @@ function backHop(
   dx: number, dz: number, color: number, label: string, flag: boolean
 ): { x: number; y: number; z: number } {
   const hops = runCount(4);
-  const rise = 1.48;
+  const rise = JUMP_STEP;
   const padAcross = 2.7;
   const padAlong = padAcross * PATH_LEN;
   const hopSpan = padAlong + WALK_HOP_GAP;

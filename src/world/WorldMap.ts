@@ -128,8 +128,13 @@ const MAX_SLOPE_BALLS = 18;
 export const SKY_START_Y = 90;
 // Low-gravity kicks in at the sky-bridge cloud (~y 88); matches retuned course pacing
 export const SPACE_START_Y = 88;
-/** Max vertical step without assist (matches PlayerController.JUMP_HEIGHT_SAFE). */
-const JUMP_STEP = 1.5;
+/**
+ * Max unassisted stand-top step. Stand jump is 1.84 m (v=9.6, g=25).
+ * 1.35 m leaves ~0.5 m of apex margin and ~2.2 m of walk airtime, matching WALK_HOP_GAP.
+ */
+const JUMP_STEP = 1.35;
+/** Extra XZ on short walkable pads so a 2.2 m hop still lands. */
+const PAD_HIT_RIM = 0.45;
 /** Max vertical step in low gravity (matches PlayerController.SPACE_JUMP_HEIGHT_SAFE). */
 const SPACE_STEP = 6.5;
 /**
@@ -275,7 +280,7 @@ export class WorldMap {
     mesh.name = name;
     if (!opts.noShadow) { mesh.castShadow = true; mesh.receiveShadow = true; }
     this.scene.add(mesh);
-    const rim = h <= 2.2 ? 0.28 : 0;
+    const rim = h <= 2.2 ? PAD_HIT_RIM : 0;
     this.colliders.push({
       min: new THREE.Vector3(x - w / 2 - rim, y - h / 2, z - d / 2 - rim),
       max: new THREE.Vector3(x + w / 2 + rim, y + h / 2, z + d / 2 + rim),
@@ -300,7 +305,7 @@ export class WorldMap {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.scene.add(mesh);
-    const rim = h <= 2.2 ? 0.28 : 0;
+    const rim = h <= 2.2 ? PAD_HIT_RIM : 0;
     const hw = w / 2 + rim, hd = d / 2 + rim;
     const c = Math.cos(rotY), s = Math.sin(rotY);
     const xs = [hw, hw, -hw, -hw];
@@ -520,9 +525,10 @@ export class WorldMap {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.scene.add(mesh);
+    const rim = 0.28;
     this.colliders.push({
-      min: new THREE.Vector3(x - bw / 2, cy - bh / 2, z - bd / 2),
-      max: new THREE.Vector3(x + bw / 2, cy + bh / 2, z + bd / 2),
+      min: new THREE.Vector3(x - bw / 2 - rim, cy - bh / 2, z - bd / 2 - rim),
+      max: new THREE.Vector3(x + bw / 2 + rim, cy + bh / 2, z + bd / 2 + rim),
       name
     });
     this.dressMesh(mesh, '/assets/steel-beam.glb');
@@ -681,7 +687,11 @@ export class WorldMap {
     mesh.name = name;
     this.scene.add(mesh);
     if (isSteelPad(color) && !lift) this.dressMesh(mesh, '/assets/steel-beam.glb');
-    const size = new THREE.Vector3(mw, mh, md);
+    const size = new THREE.Vector3(
+      mh <= 2.2 ? mw + PAD_HIT_RIM * 2 : mw,
+      mh,
+      mh <= 2.2 ? md + PAD_HIT_RIM * 2 : md
+    );
     const collider: BoxCollider = {
       min: a.clone().sub(size.clone().multiplyScalar(0.5)),
       max: a.clone().add(size.clone().multiplyScalar(0.5)),
@@ -834,8 +844,8 @@ export class WorldMap {
     if (!walkable) return;
     const capH = 0.2;
     const capY = y + standTop - capH / 2;
-    const padW = w * 0.86 + 0.56;
-    const padD = d * 0.86 + 0.56;
+    const padW = w * 0.86 + PAD_HIT_RIM * 2;
+    const padD = d * 0.86 + PAD_HIT_RIM * 2;
     if (moving) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(padW, capH, padD),
         new THREE.MeshStandardMaterial({ visible: false }));
@@ -904,7 +914,7 @@ export class WorldMap {
     rock.updateMatrixWorld(true);
     const bbox = new THREE.Box3().setFromObject(rock);
     rock.position.y += standTop - 0.04 - bbox.max.y;
-    const capR = r * 0.58;
+    const capR = r * 0.72;
     this.colliders.push({
       min: new THREE.Vector3(x - capR, standTop - 0.22, z - capR),
       max: new THREE.Vector3(x + capR, standTop + 0.02, z + capR),
@@ -1800,7 +1810,8 @@ export class WorldMap {
     const cloudPad = (d: number) => d * 0.86;
     const cloudD = along(6.2);
     const cloudN = runCount(7);
-    let cy = stepY + 2;
+    // Cloud stand is cy+0.58; elevator rest top is stepY+0.5 → keep the hop ≤ JUMP_STEP.
+    let cy = stepY + JUMP_STEP - 0.08;
     let cz = hopCenter(elevRestZ, elevRestD, cloudPad(cloudD));
     for (let i = 0; i < cloudN; i++) {
       const cx = Math.sin(i * 1.3) * 3.2;

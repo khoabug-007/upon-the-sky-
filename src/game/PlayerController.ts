@@ -57,7 +57,7 @@ export class PlayerController {
   private tmpR = new THREE.Vector3();
 
   /** Feet this close to a box top count as standing on it, not inside a wall. */
-  private static readonly FLOOR_SKIN = 0.28;
+  private static readonly FLOOR_SKIN = 0.4;
 
   onBounce: (() => void) | null = null;
   onRotorHit: (() => void) | null = null;
@@ -295,6 +295,7 @@ export class PlayerController {
         const shortPad = boxH <= 2.2;
         // Thin floors (pads, trampolines, curbs) must not act as invisible walls
         // while you are in a bounce or jump. Side-eject zeros XZ and drops the chain.
+        // Walkable tops still catch on Y (swept / insideFall) so you cannot fall through.
         if (c.bouncy || (!this.onGround && shortPad)) continue;
         // Floor top: do not treat as a wall.
         if (this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN) continue;
