@@ -12,18 +12,18 @@ const SLOPE_RUN_SPEED = 3.4;
 const CRAWL_SPEED = 2.3;
 const JUMP_VEL = 9.6;
 const SPACE_JUMP_VEL = 11.5;
-const GRAVITY = -24;
+const GRAVITY = -25;
 const SPACE_GRAVITY = -7.5;
 const GRAVITY_MAG = -GRAVITY;
 const SPACE_GRAVITY_MAG = -SPACE_GRAVITY;
 
 /** Measured jump reach from existing physics (v²/2g, flat ground, stand jump). */
-export const JUMP_HEIGHT = (JUMP_VEL * JUMP_VEL) / (2 * GRAVITY_MAG); // 1.92 m
+export const JUMP_HEIGHT = (JUMP_VEL * JUMP_VEL) / (2 * GRAVITY_MAG); // 1.84 m
 /** Design cap for required vertical steps without trampoline/grab assist. */
 export const JUMP_HEIGHT_SAFE = 1.55;
-export const JUMP_HANG_TIME = (2 * JUMP_VEL) / GRAVITY_MAG; // 0.80 s
-export const JUMP_DIST_WALK = WALK_SPEED * JUMP_HANG_TIME; // 4.40 m
-export const JUMP_DIST_RUN = RUN_SPEED * JUMP_HANG_TIME; // 7.68 m
+export const JUMP_HANG_TIME = (2 * JUMP_VEL) / GRAVITY_MAG; // 0.77 s
+export const JUMP_DIST_WALK = WALK_SPEED * JUMP_HANG_TIME; // 4.22 m
+export const JUMP_DIST_RUN = RUN_SPEED * JUMP_HANG_TIME; // 7.37 m
 
 export const SPACE_JUMP_HEIGHT = (SPACE_JUMP_VEL * SPACE_JUMP_VEL) / (2 * SPACE_GRAVITY_MAG); // 8.82 m
 /** Design cap for required vertical steps in low-gravity zones. */
@@ -279,9 +279,14 @@ export class PlayerController {
       const minX = this.pos.x - this.radius, maxX = this.pos.x + this.radius;
       const minY = this.pos.y, maxY = this.pos.y + this.height;
       const minZ = this.pos.z - this.radius, maxZ = this.pos.z + this.radius;
-      if (maxX <= c.min.x || minX >= c.max.x) continue;
-      if (maxY <= c.min.y || minY >= c.max.y) continue;
-      if (maxZ <= c.min.z || minZ >= c.max.z) continue;
+      const xzHit = !(maxX <= c.min.x || minX >= c.max.x || maxZ <= c.min.z || minZ >= c.max.z);
+      if (!xzHit) continue;
+
+      const prevY = axis === 'y' ? this.pos.y - amount : this.pos.y;
+      const sweptOntoTop = axis === 'y' && amount <= 0
+        && prevY >= c.max.y - 0.32 && this.pos.y <= c.max.y + 0.04;
+      const yOverlap = !(maxY <= c.min.y || minY >= c.max.y);
+      if (!yOverlap && !sweptOntoTop) continue;
 
       const boxH = c.max.y - c.min.y;
       const solidWall = boxH > 2.2;
@@ -314,17 +319,19 @@ export class PlayerController {
           this.vel.z = 0;
         }
       } else {
-        const prevY = this.pos.y - amount;
-        const fromAbove = amount <= 0 && prevY >= c.max.y - 0.22;
+        const fromAbove = amount <= 0 && prevY >= c.max.y - 0.32;
         if (c.bouncy && fromAbove && this.overDisc(c)) {
           this.pos.y = c.max.y;
           this.vel.y = TRAMPOLINE_BOUNCE_VEL;
           this.onBounce?.();
           continue;
         }
-        const crossedTop = amount <= 0 && prevY >= c.max.y - 0.08 && this.pos.y <= c.max.y;
+        const crossedTop = amount <= 0 && prevY >= c.max.y - 0.12 && this.pos.y <= c.max.y;
         const inTopSkin = amount <= 0 && this.pos.y >= c.max.y - PlayerController.FLOOR_SKIN;
-        if (crossedTop || inTopSkin) {
+        // Short pads (UFOs, clouds, 1 m blocks) are one-way from below, but once the
+        // feet are already in the slab, snap to the top instead of falling through.
+        const insideFall = amount <= 0 && !solidWall && prevY >= c.min.y && this.pos.y < c.max.y;
+        if (sweptOntoTop || crossedTop || inTopSkin || insideFall) {
           if (c.bouncy && !this.overDisc(c)) continue;
           this.pos.y = c.max.y;
           if (c.bouncy) {

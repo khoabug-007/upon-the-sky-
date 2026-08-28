@@ -4,9 +4,10 @@ export type UfoKind = 'saucer' | 'delta';
 
 /** Collider size of the walkable top deck (meters). Visual hull is slightly larger. */
 export function ufoDeckSize(kind: UfoKind): THREE.Vector3 {
+  // Thick slab so a jump cannot tunnel through; visual deck sits on max.y.
   return kind === 'saucer'
-    ? new THREE.Vector3(12.4, 0.48, 12.4)
-    : new THREE.Vector3(13.0, 0.48, 11.6);
+    ? new THREE.Vector3(13.8, 1.9, 13.8)
+    : new THREE.Vector3(14.4, 1.9, 13.0);
 }
 
 function metal(color: number, metalness = 0.82, roughness = 0.32, emissive = 0x000000, ei = 0): THREE.MeshStandardMaterial {

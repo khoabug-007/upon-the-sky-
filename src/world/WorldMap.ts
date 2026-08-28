@@ -122,8 +122,8 @@ export interface HazardBall {
   slope: Slope;
 }
 
-const BALL_COLORS = [0x3498db, 0xe74c3c, 0x9b59b6, 0xf1c40f];
-const MAX_SLOPE_BALLS = 16;
+const BALL_COLORS = [0x3498db, 0xe74c3c, 0x9b59b6, 0xf1c40f, 0xe67e22, 0x1abc9c];
+const MAX_SLOPE_BALLS = 18;
 
 export const SKY_START_Y = 90;
 // Low-gravity kicks in at the sky-bridge cloud (~y 88); matches retuned course pacing
@@ -133,10 +133,10 @@ const JUMP_STEP = 1.5;
 /** Max vertical step in low gravity (matches PlayerController.SPACE_JUMP_HEIGHT_SAFE). */
 const SPACE_STEP = 6.5;
 /**
- * Jump reach from PlayerController physics (JUMP_VEL 9.6, GRAVITY -24, walk 5.5 / run 9.6):
- *   height 1.92 m | hang 0.80 s | walk 4.40 m | run 7.68 m
- *   hop of +JUMP_STEP: airtime 0.587 s → walk 3.23 m | run 5.63 m
- * Player radius 0.38, so walkable edge-to-edge at +JUMP_STEP is ≤ 3.23 − 0.76 = 2.47 m.
+ * Jump reach from PlayerController physics (JUMP_VEL 9.6, GRAVITY -25, walk 5.5 / run 9.6):
+ *   height 1.84 m | hang 0.77 s | walk 4.22 m | run 7.37 m
+ *   hop of +JUMP_STEP: walk edge gap stays JUMP_GAP (one block).
+ * Player radius 0.38, so walkable edge-to-edge at +JUMP_STEP stays JUMP_GAP.
  */
 const JUMP_GAP = 2.2;
 /** Half-width of paired slider travel; keeps worst-case 3D hop inside walk reach. */
@@ -275,9 +275,10 @@ export class WorldMap {
     mesh.name = name;
     if (!opts.noShadow) { mesh.castShadow = true; mesh.receiveShadow = true; }
     this.scene.add(mesh);
+    const rim = h <= 2.2 ? 0.28 : 0;
     this.colliders.push({
-      min: new THREE.Vector3(x - w / 2, y - h / 2, z - d / 2),
-      max: new THREE.Vector3(x + w / 2, y + h / 2, z + d / 2),
+      min: new THREE.Vector3(x - w / 2 - rim, y - h / 2, z - d / 2 - rim),
+      max: new THREE.Vector3(x + w / 2 + rim, y + h / 2, z + d / 2 + rim),
       bouncy: opts.bouncy,
       name
     });
@@ -299,7 +300,8 @@ export class WorldMap {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.scene.add(mesh);
-    const hw = w / 2, hd = d / 2;
+    const rim = h <= 2.2 ? 0.28 : 0;
+    const hw = w / 2 + rim, hd = d / 2 + rim;
     const c = Math.cos(rotY), s = Math.sin(rotY);
     const xs = [hw, hw, -hw, -hw];
     const zs = [hd, -hd, hd, -hd];
@@ -832,8 +834,8 @@ export class WorldMap {
     if (!walkable) return;
     const capH = 0.2;
     const capY = y + standTop - capH / 2;
-    const padW = w * 0.86;
-    const padD = d * 0.86;
+    const padW = w * 0.86 + 0.56;
+    const padD = d * 0.86 + 0.56;
     if (moving) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(padW, capH, padD),
         new THREE.MeshStandardMaterial({ visible: false }));
@@ -962,10 +964,11 @@ export class WorldMap {
     name = 'Marble Slope'
   ): Slope {
     const slope = this.addWalkSlope(x0, x1, z0, y0, z1, y1, name, 0xb08968);
-    const radius = 0.72;
     for (let i = 0; i < MAX_SLOPE_BALLS; i++) {
+      const large = i % 2 === 0;
+      const radius = large ? 1.28 + (i % 5) * 0.16 : 0.42 + (i % 4) * 0.08;
       const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(radius, 16, 12),
+        new THREE.SphereGeometry(radius, large ? 18 : 14, large ? 14 : 10),
         new THREE.MeshStandardMaterial({ color: BALL_COLORS[i % BALL_COLORS.length], roughness: 0.35, metalness: 0.08 })
       );
       mesh.castShadow = true;
@@ -1842,7 +1845,7 @@ export class WorldMap {
       const rz = slopeZ1 + bridgeD * ((i + 1) / (rotorN + 1));
       this.addRotor(0, bridgeY + 1.85, rz, 4.2, i % 2 === 0 ? 1.15 : -1.25, i % 2 === 0 ? 0xe74c3c : 0xe67e22);
     }
-    this.addTrampoline(0, bridgeY - 0.02, slopeZ1 + bridgeD * 0.88, 1.4, 'Bridge Trampoline');
+    this.addTrampoline(0, bridgeY + 0.32, slopeZ1 + bridgeD * 0.93, 1.7, 'Bridge Trampoline');
     const gauntD = along(7);
     const gauntZ = hopCenter(bridgeCenter, bridgeD, cloudPad(gauntD));
     const gauntY = bridgeY + 4;
@@ -2055,8 +2058,9 @@ export class WorldMap {
   }
 
   private spawnHazardBall(): void {
-    const ball = this.hazardBalls.find((b) => !b.active);
-    if (!ball) return;
+    const idle = this.hazardBalls.filter((b) => !b.active);
+    if (idle.length === 0) return;
+    const ball = idle[Math.floor(Math.random() * idle.length)]!;
     const s = ball.slope;
     const margin = ball.radius + 0.25;
     ball.pos.set(

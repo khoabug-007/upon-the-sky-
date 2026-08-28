@@ -10,7 +10,7 @@ const SPACE_BAND_Y = 88;
 const WALK_SPEED = 5.5;
 /** Copied from PlayerController trampoline bounce. */
 const TRAMP_BOUNCE_VEL = 17.5;
-const GRAVITY_MAG = 24;
+const GRAVITY_MAG = 25;
 const SPACE_GRAVITY_MAG = 7.5;
 const REBOUND_R = 1.45;
 /** Linear ping-pong: one-way time is 1/speed seconds. */
