@@ -57,6 +57,7 @@ export class Game {
   private shiftLockHeld = false;
   private renderPos = new THREE.Vector3();
   private shadowTick = 0;
+  private readonly soloClimb: boolean;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -64,6 +65,7 @@ export class Game {
     private profile: Profile,
     joinInfo: JoinResult
   ) {
+    this.soloClimb = (joinInfo.code ?? '') === 'SOLO';
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: false,
@@ -102,15 +104,19 @@ export class Game {
 
     this.cam = new CameraRig(canvas);
 
-    // Restore saved progress (auto-save at checkpoints)
-    const saved = localStorage.getItem(PROGRESS_KEY);
-    if (saved) {
-      const idx = Math.min(JSON.parse(saved).checkpoint ?? -1, this.world.checkpoints.length - 1);
-      this.currentCheckpoint = idx;
-      if (idx >= 0) {
-        this.markCheckpointsReached(idx);
-        setTimeout(() => this.hud.toast(`Welcome back, ${profile.name}! Progress restored at "${this.world.checkpoints[idx].label}".`, 4500), 800);
+    // Solo keeps local checkpoint progress. Multiplayer rooms always start at the dirt.
+    if (this.soloClimb) {
+      const saved = localStorage.getItem(PROGRESS_KEY);
+      if (saved) {
+        const idx = Math.min(JSON.parse(saved).checkpoint ?? -1, this.world.checkpoints.length - 1);
+        this.currentCheckpoint = idx;
+        if (idx >= 0) {
+          this.markCheckpointsReached(idx);
+          setTimeout(() => this.hud.toast(`Welcome back, ${profile.name}! Progress restored at "${this.world.checkpoints[idx].label}".`, 4500), 800);
+        }
       }
+    } else {
+      setTimeout(() => this.hud.toast('Fresh server! Everyone starts from the ground.', 4200), 800);
     }
     this.controller.teleport(this.respawnPoint());
     this.cam.snap(this.controller.pos);
@@ -130,7 +136,7 @@ export class Game {
     };
     this.hud.onPlayAgain = () => {
       this.currentCheckpoint = -1;
-      localStorage.removeItem(PROGRESS_KEY);
+      if (this.soloClimb) localStorage.removeItem(PROGRESS_KEY);
       this.endingTriggered = false;
       this.controller.endingMode = false;
       this.controller.flyMode = false;
@@ -470,7 +476,9 @@ export class Game {
         this.currentCheckpoint = cp.index;
         this.afterFlyRefY = null;
         this.markCheckpointsReached(cp.index);
-        localStorage.setItem(PROGRESS_KEY, JSON.stringify({ checkpoint: cp.index }));
+        if (this.soloClimb) {
+          localStorage.setItem(PROGRESS_KEY, JSON.stringify({ checkpoint: cp.index }));
+        }
         this.hud.checkpointToast(cp.label, cp.index, this.world.checkpoints.length);
         this.hud.setProgress(cp.index + 1, this.world.checkpoints.length);
         this.spawnConfetti(cp.pos.clone().add(new THREE.Vector3(0, 1.5, 0)));
