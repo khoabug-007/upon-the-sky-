@@ -2,9 +2,9 @@ import * as THREE from 'three';
 import { ufoDeckSize } from './ufoCraft';
 
 /** Copied from PlayerController jump budget so this file does not import Game physics. */
-const JUMP_DIST_RUN = 7.37;
+const JUMP_DIST_RUN = 7.68;
 const JUMP_HEIGHT_SAFE = 1.55;
-/** Unassisted pad-to-pad rise. Must stay under stand jump (1.84 m) with walk-gap airtime. */
+/** Unassisted pad-to-pad rise. Must stay under stand jump (1.92 m) with walk-gap airtime. */
 const JUMP_STEP = 1.35;
 const SPACE_JUMP_HEIGHT_SAFE = 7.0;
 
@@ -12,7 +12,7 @@ const SPACE_BAND_Y = 88;
 const WALK_SPEED = 5.5;
 /** Copied from PlayerController trampoline bounce. */
 const TRAMP_BOUNCE_VEL = 17.5;
-const GRAVITY_MAG = 25;
+const GRAVITY_MAG = 24;
 const SPACE_GRAVITY_MAG = 7.5;
 const REBOUND_R = 1.45;
 /** Linear ping-pong: one-way time is 1/speed seconds. */

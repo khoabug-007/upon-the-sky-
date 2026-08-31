@@ -129,8 +129,8 @@ export const SKY_START_Y = 90;
 // Low-gravity kicks in at the sky-bridge cloud (~y 88); matches retuned course pacing
 export const SPACE_START_Y = 88;
 /**
- * Max unassisted stand-top step. Stand jump is 1.84 m (v=9.6, g=25).
- * 1.35 m leaves ~0.5 m of apex margin and ~2.2 m of walk airtime, matching WALK_HOP_GAP.
+ * Max unassisted stand-top step. Stand jump is 1.92 m (v=9.6, g=24).
+ * 1.35 m leaves ~0.57 m of apex margin and ~2.2 m of walk airtime, matching WALK_HOP_GAP.
  */
 const JUMP_STEP = 1.35;
 /** Extra XZ on short walkable pads so a 2.2 m hop still lands. */
@@ -138,8 +138,8 @@ const PAD_HIT_RIM = 0.45;
 /** Max vertical step in low gravity (matches PlayerController.SPACE_JUMP_HEIGHT_SAFE). */
 const SPACE_STEP = 6.5;
 /**
- * Jump reach from PlayerController physics (JUMP_VEL 9.6, GRAVITY -25, walk 5.5 / run 9.6):
- *   height 1.84 m | hang 0.77 s | walk 4.22 m | run 7.37 m
+ * Jump reach from PlayerController physics (JUMP_VEL 9.6, GRAVITY -24, walk 5.5 / run 9.6):
+ *   height 1.92 m | hang 0.80 s | walk 4.40 m | run 7.68 m
  *   hop of +JUMP_STEP: walk edge gap stays JUMP_GAP (one block).
  * Player radius 0.38, so walkable edge-to-edge at +JUMP_STEP stays JUMP_GAP.
  */

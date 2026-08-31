@@ -12,18 +12,18 @@ const SLOPE_RUN_SPEED = 3.4;
 const CRAWL_SPEED = 2.3;
 const JUMP_VEL = 9.6;
 const SPACE_JUMP_VEL = 11.5;
-const GRAVITY = -25;
+const GRAVITY = -24;
 const SPACE_GRAVITY = -7.5;
 const GRAVITY_MAG = -GRAVITY;
 const SPACE_GRAVITY_MAG = -SPACE_GRAVITY;
 
 /** Measured jump reach from existing physics (v²/2g, flat ground, stand jump). */
-export const JUMP_HEIGHT = (JUMP_VEL * JUMP_VEL) / (2 * GRAVITY_MAG); // 1.84 m
+export const JUMP_HEIGHT = (JUMP_VEL * JUMP_VEL) / (2 * GRAVITY_MAG); // 1.92 m
 /** Design cap for required vertical steps without trampoline/grab assist. */
 export const JUMP_HEIGHT_SAFE = 1.55;
-export const JUMP_HANG_TIME = (2 * JUMP_VEL) / GRAVITY_MAG; // 0.77 s
-export const JUMP_DIST_WALK = WALK_SPEED * JUMP_HANG_TIME; // 4.22 m
-export const JUMP_DIST_RUN = RUN_SPEED * JUMP_HANG_TIME; // 7.37 m
+export const JUMP_HANG_TIME = (2 * JUMP_VEL) / GRAVITY_MAG; // 0.80 s
+export const JUMP_DIST_WALK = WALK_SPEED * JUMP_HANG_TIME; // 4.40 m
+export const JUMP_DIST_RUN = RUN_SPEED * JUMP_HANG_TIME; // 7.68 m
 
 export const SPACE_JUMP_HEIGHT = (SPACE_JUMP_VEL * SPACE_JUMP_VEL) / (2 * SPACE_GRAVITY_MAG); // 8.82 m
 /** Design cap for required vertical steps in low-gravity zones. */
