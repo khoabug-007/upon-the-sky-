@@ -88,6 +88,9 @@ export class PlayerController {
     this.vel.set(0, 0, 0);
     this.onSlope = false;
     this.stunTimer = 0;
+    this.onGround = false;
+    this.groundCollider = null;
+    this.moveLock = 0;
   }
 
   /** Call once per physics tick before update() so the renderer can lerp. */
@@ -281,6 +284,8 @@ export class PlayerController {
       const minZ = this.pos.z - this.radius, maxZ = this.pos.z + this.radius;
       const xzHit = !(maxX <= c.min.x || minX >= c.max.x || maxZ <= c.min.z || minZ >= c.max.z);
       if (!xzHit) continue;
+      // Oriented walls have a fat AABB. Do not land on / fall through the AABB corners.
+      if (c.yaw !== undefined && !world.containsXZ(c, this.pos.x, this.pos.z)) continue;
 
       const prevY = axis === 'y' ? this.pos.y - amount : this.pos.y;
       const sweptOntoTop = axis === 'y' && amount <= 0

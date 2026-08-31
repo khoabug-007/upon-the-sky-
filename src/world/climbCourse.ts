@@ -438,11 +438,11 @@ function reboundRows(
 function placeComingSoon(
   api: ClimbApi, x: number, y: number, z: number, dx: number, dz: number
 ): void {
-  const plaza = 4 * PATH_LEN;
+  const plaza = 18 * PATH_LEN;
   const px = x + dx * plaza;
   const pz = z + dz * plaza;
   const plazaW = 12;
-  const plazaD = 12 * PATH_LEN;
+  const plazaD = 10 * PATH_LEN;
   const { w: pw, d: pd } = padDimsAlongTravel(dx, dz, plazaW, plazaD);
   api.addBox(pw, 1, pd, px, y, pz, 0xcfa15a, { name: 'Coming Soon Plaza' });
   api.addSign(

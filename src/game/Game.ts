@@ -108,7 +108,7 @@ export class Game {
     if (this.soloClimb) {
       const saved = localStorage.getItem(PROGRESS_KEY);
       if (saved) {
-        const idx = Math.min(JSON.parse(saved).checkpoint ?? -1, this.world.checkpoints.length - 1);
+        const idx = this.resolveSavedCheckpoint(saved);
         this.currentCheckpoint = idx;
         if (idx >= 0) {
           this.markCheckpointsReached(idx);
@@ -118,8 +118,7 @@ export class Game {
     } else {
       setTimeout(() => this.hud.toast('Fresh server! Everyone starts from the ground.', 4200), 800);
     }
-    this.controller.teleport(this.respawnPoint());
-    this.cam.snap(this.controller.pos);
+    this.applyRespawnPose();
     this.hud.setProgress(this.currentCheckpoint + 1, this.world.checkpoints.length);
 
     this.controller.onBounce = () => this.hud.toast('BOING!', 900);
@@ -454,6 +453,33 @@ export class Game {
 
   // ---------------- checkpoints, respawn, ending ----------------
 
+  private resolveSavedCheckpoint(raw: string): number {
+    try {
+      const data = JSON.parse(raw) as { checkpoint?: number; label?: string };
+      if (typeof data.label === 'string' && data.label.length > 0) {
+        const byLabel = this.world.checkpoints.findIndex((c) => c.label === data.label);
+        if (byLabel >= 0) return byLabel;
+      }
+      const idx = data.checkpoint;
+      if (typeof idx === 'number' && idx >= 0 && idx < this.world.checkpoints.length) return idx;
+    } catch {
+      /* ignore bad saves */
+    }
+    return -1;
+  }
+
+  private applyRespawnPose(): void {
+    const p = this.respawnPoint();
+    this.controller.teleport(p);
+    const top = this.world.nearestStandY(p.x, p.z, p.y);
+    if (top !== null && Math.abs(top - p.y) < 4) {
+      this.controller.pos.y = top;
+      this.controller.prevPos.copy(this.controller.pos);
+      this.controller.onGround = true;
+    }
+    this.cam.snap(this.controller.pos);
+  }
+
   private respawnPoint(): THREE.Vector3 {
     if (this.currentCheckpoint >= 0) {
       return this.world.checkpoints[this.currentCheckpoint].pos.clone().add(new THREE.Vector3(0, 0.6, 0));
@@ -470,20 +496,27 @@ export class Game {
   }
 
   private checkCheckpoints(): void {
+    let best: (typeof this.world.checkpoints)[number] | null = null;
+    let bestDist = 3.4;
     for (const cp of this.world.checkpoints) {
       if (cp.index <= this.currentCheckpoint) continue;
-      if (cp.pos.distanceTo(this.controller.pos) < 3.4) {
-        this.currentCheckpoint = cp.index;
-        this.afterFlyRefY = null;
-        this.markCheckpointsReached(cp.index);
-        if (this.soloClimb) {
-          localStorage.setItem(PROGRESS_KEY, JSON.stringify({ checkpoint: cp.index }));
-        }
-        this.hud.checkpointToast(cp.label, cp.index, this.world.checkpoints.length);
-        this.hud.setProgress(cp.index + 1, this.world.checkpoints.length);
-        this.spawnConfetti(cp.pos.clone().add(new THREE.Vector3(0, 1.5, 0)));
+      if (Math.abs(cp.pos.y - this.controller.pos.y) > 4) continue;
+      const d = cp.pos.distanceTo(this.controller.pos);
+      if (d < bestDist) {
+        bestDist = d;
+        best = cp;
       }
     }
+    if (!best) return;
+    this.currentCheckpoint = best.index;
+    this.afterFlyRefY = null;
+    this.markCheckpointsReached(best.index);
+    if (this.soloClimb) {
+      localStorage.setItem(PROGRESS_KEY, JSON.stringify({ checkpoint: best.index, label: best.label }));
+    }
+    this.hud.checkpointToast(best.label, best.index, this.world.checkpoints.length);
+    this.hud.setProgress(best.index + 1, this.world.checkpoints.length);
+    this.spawnConfetti(best.pos.clone().add(new THREE.Vector3(0, 1.5, 0)));
   }
 
   private handleChatCommand(command: string): void {
@@ -540,8 +573,7 @@ export class Game {
     this.afterFlyRefY = null;
     this.pendingFlyLand = false;
     this.fallOutTimer = 0;
-    this.controller.teleport(this.respawnPoint());
-    this.cam.snap(this.controller.pos);
+    this.applyRespawnPose();
     this.hud.setFallOut(null);
     this.hud.fallToast();
   }
