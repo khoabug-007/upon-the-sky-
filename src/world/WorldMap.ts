@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { gltfLoader } from '../render/gltf';
 import { appendClimbLevels, placeThrowGate, type ClimbApi, type ThrowSwitch } from './climbCourse';
+import { oneObstacleGap, setSpaceStartY } from './jumpBudget';
 import { isLiftName, isSteelPad, lookMaterial } from './looks';
 import { buildUfoCraft, ufoDeckSize, type UfoKind } from './ufoCraft';
+
+export { SPACE_START_Y } from './jumpBudget';
 
 export interface BoxCollider {
   min: THREE.Vector3;
@@ -126,8 +129,6 @@ const BALL_COLORS = [0x3498db, 0xe74c3c, 0x9b59b6, 0xf1c40f, 0xe67e22, 0x1abc9c]
 const MAX_SLOPE_BALLS = 18;
 
 export const SKY_START_Y = 90;
-// Low-gravity kicks in at the sky-bridge cloud (~y 88); matches retuned course pacing
-export const SPACE_START_Y = 88;
 /**
  * Max unassisted stand-top step. Stand jump is 1.92 m (v=9.6, g=24).
  * 1.35 m leaves ~0.57 m of apex margin and ~2.2 m of walk airtime, matching WALK_HOP_GAP.
@@ -154,6 +155,8 @@ const runCount = (n: number) => Math.max(1, Math.round(n * COURSE_RUN));
 const along = (d: number) => d * PATH_LEN;
 const hopCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
   prevZ + prevAlong / 2 + JUMP_GAP + nextAlong / 2;
+const hopMoon = (prevZ: number, prevAlong: number, nextAlong: number, rise: number) =>
+  prevZ + prevAlong / 2 + oneObstacleGap(rise, nextAlong, true) + nextAlong / 2;
 const joinCenter = (prevZ: number, prevAlong: number, nextAlong: number) =>
   prevZ + prevAlong / 2 + nextAlong / 2;
 const BG_WATCHES = 20;
@@ -1862,20 +1865,22 @@ export class WorldMap {
     const gauntY = bridgeY + 4;
     this.addCloud(0, gauntY, gauntZ, 8, gauntD, undefined, 'Gauntlet Cloud');
     this.addCheckpoint(0, gauntY + 0.58, gauntZ, 'Gauntlet Hero');
+    // Checkpoint 5/21: moon gravity from this pad through the last flag.
+    setSpaceStartY(gauntY - 0.15);
 
     // ===== SECTION 4: OUTER SPACE =====
-    // Obstacle 10: low-gravity asteroid leaps (first hop Δ JUMP_STEP; then Δ SPACE_STEP)
+    // Obstacle 10: moon-gravity asteroid leaps (one-obstacle gaps from jump reach).
     const astAlong = (r: number) => r * 0.58 * 2;
     const astN = runCount(6);
     const astX = [0, 6, -5, 3, -2, 4, -3, 5, -4, 2, -1, 0];
     let ay = gauntY + JUMP_STEP;
-    let az = hopCenter(gauntZ, cloudPad(gauntD), astAlong(2.6));
+    let az = hopMoon(gauntZ, cloudPad(gauntD), astAlong(2.6), JUMP_STEP);
     let prevAstZ = az;
     let prevAstAlong = astAlong(2.6);
     for (let i = 0; i < astN; i++) {
       const r = 2.6 + (i % 2) * 0.7;
       if (i > 0) {
-        az = hopCenter(prevAstZ, prevAstAlong, astAlong(r));
+        az = hopMoon(prevAstZ, prevAstAlong, astAlong(r), SPACE_STEP);
         ay += SPACE_STEP;
       }
       this.addAsteroid(astX[i]!, ay, az, r, `Asteroid ${i + 1}`);
@@ -1883,7 +1888,7 @@ export class WorldMap {
       prevAstAlong = astAlong(r);
     }
     ay += SPACE_STEP;
-    az = hopCenter(prevAstZ, prevAstAlong, astAlong(4));
+    az = hopMoon(prevAstZ, prevAstAlong, astAlong(4), SPACE_STEP);
     this.addAsteroid(0, ay, az, 4, 'Asteroid Rest');
     this.addSign(['Outer space:', 'no air, no lag,', 'no excuses.'], 5, ay + 4, az, 1);
     this.addCheckpoint(0, ay + 0.1, az, 'Asteroid Hopper');
@@ -1895,7 +1900,7 @@ export class WorldMap {
     let lastDriftZ = az;
     const driftColors = [0x7e57c2, 0x5c6bc0, 0x7e57c2, 0x5c6bc0];
     for (let i = 0; i < driftN; i++) {
-      const dz = driftEdge + JUMP_GAP + driftD / 2;
+      const dz = driftEdge + oneObstacleGap(i < 2 ? 5 : 10, driftD, true) + driftD / 2;
       const y = ay + (i < 2 ? 5 : 10);
       const xa = i % 2 === 0 ? -6 : 6;
       this.addMover(3.4, 0.8, driftD,
@@ -1905,12 +1910,12 @@ export class WorldMap {
       lastDriftZ = dz;
     }
     const liftD = along(3.4);
-    const liftZ = hopCenter(lastDriftZ, driftD, liftD);
+    const liftZ = hopMoon(lastDriftZ, driftD, liftD, 7);
     this.addMover(3.4, 0.8, liftD,
       new THREE.Vector3(0, ay + 12, liftZ), new THREE.Vector3(0, ay + 19, liftZ),
       0x26a69a, 0.7, 1, 'Space Lift');
     const beltR = 3.4;
-    const beltAz = hopCenter(liftZ, liftD, astAlong(beltR));
+    const beltAz = hopMoon(liftZ, liftD, astAlong(beltR), 7);
     const beltAy = ay + 21;
     this.addAsteroid(0, beltAy, beltAz, beltR, 'Belt Asteroid');
     this.addCheckpoint(0, beltAy + 0.1, beltAz, 'Belt Rider');

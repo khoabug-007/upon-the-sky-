@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { oneObstacleGap, SPACE_START_Y } from './jumpBudget';
 import { ufoDeckSize } from './ufoCraft';
 
 /** Copied from PlayerController jump budget so this file does not import Game physics. */
@@ -8,7 +9,6 @@ const JUMP_HEIGHT_SAFE = 1.55;
 const JUMP_STEP = 1.35;
 const SPACE_JUMP_HEIGHT_SAFE = 7.0;
 
-const SPACE_BAND_Y = 88;
 const WALK_SPEED = 5.5;
 /** Copied from PlayerController trampoline bounce. */
 const TRAMP_BOUNCE_VEL = 17.5;
@@ -20,8 +20,12 @@ const UFO_SPEED = 0.035;
 /** Short diagonal so the ride crawls instead of covering the old 50-pad climb. */
 const UFO_CLIMB = 14;
 const UFO_ALONG = 12;
-/** Walk hop at +JUMP_STEP: ~2.2 m air, matching the one-block edge gap. */
+/** Earth walk hop at +JUMP_STEP. Moon gaps use oneObstacleGap(). */
 const WALK_HOP_GAP = 2.2;
+
+function obstacleGap(rise: number, along: number, y: number): number {
+  return y > SPACE_START_Y ? oneObstacleGap(rise, along, true) : WALK_HOP_GAP;
+}
 const PAD = 3.1;
 /** Along-travel pad length: 3× the previous live scale (2/3). */
 const PATH_LEN = 2;
@@ -31,7 +35,7 @@ const runCount = (n: number) => Math.max(1, Math.round(n * COURSE_RUN));
 
 /** Seconds in the air from a bounce until you come back down to `landRise` above the pad. */
 function bounceFlightTime(py: number, landRise: number): number {
-  const g = py > SPACE_BAND_Y ? SPACE_GRAVITY_MAG : GRAVITY_MAG;
+  const g = py > SPACE_START_Y ? SPACE_GRAVITY_MAG : GRAVITY_MAG;
   const v = TRAMP_BOUNCE_VEL;
   const disc = v * v - 2 * g * Math.max(0, landRise);
   if (disc <= 0) return (2 * v) / g;
@@ -140,7 +144,7 @@ export function appendClimbLevels(
     const flag = last || wait <= 0;
     const progress = extra <= 1 ? 1 : i / (extra - 1);
     const hard = progress * progress;
-    const inSpace = y > SPACE_BAND_Y;
+    const inSpace = y > SPACE_START_Y;
     const rise = inSpace
       ? Math.min(4.8 + hard * 1.4, SPACE_JUMP_HEIGHT_SAFE - 0.6)
       : Math.min(1.15 + hard * 0.2, JUMP_STEP);
@@ -315,7 +319,7 @@ function backHop(
   const rise = JUMP_STEP;
   const padAcross = 2.7;
   const padAlong = padAcross * PATH_LEN;
-  const hopSpan = padAlong + WALK_HOP_GAP;
+  const hopSpan = padAlong + obstacleGap(rise, padAlong, y);
   let py = y;
   let along = 0;
   for (let i = 0; i < hops; i++) {
@@ -354,7 +358,7 @@ function reverseSpin(
   api.addRotor(mx, y + 1.35, mz, 3.2, -2.05, 0xf39c12);
   const landAcross = 3.3;
   const landAlong = landAcross * PATH_LEN;
-  const along = mid + arenaAlong / 2 + WALK_HOP_GAP + landAlong / 2;
+  const along = mid + arenaAlong / 2 + obstacleGap(0, landAlong, y) + landAlong / 2;
   const ex = ox + dx * along;
   const ez = z + dz * along;
   const { w: lw, d: ld } = padDimsAlongTravel(dx, dz, landAcross, landAlong);
@@ -387,7 +391,7 @@ function reboundRows(
   const delta = ufoDeckSize('delta');
   const padHalf = 3.1;
   const startTop = y + 0.5;
-  const lowAlong = startAlong + startHalf + WALK_HOP_GAP + saucer.x / 2;
+  const lowAlong = startAlong + startHalf + obstacleGap(0, saucer.x, y) + saucer.x / 2;
   const endAlong = lowAlong + UFO_ALONG;
   const endY = y + UFO_CLIMB;
   const end = {
@@ -398,7 +402,7 @@ function reboundRows(
   const lowSide = 5.6;
   const deckLift = (h: number) => startTop - h / 2;
   const highLift = (h: number) => end.y + 0.5 - h / 2;
-  const highGap = (half: number) => padHalf + WALK_HOP_GAP + half;
+  const highGap = (half: number) => padHalf + obstacleGap(0, half * 2, end.y) + half;
 
   api.addUfo(
     'saucer',
@@ -487,7 +491,7 @@ function hopStairs(
   rise: number, flag: boolean, hard: number
 ) {
   const hops = runCount(3 + (hard > 0.55 ? 2 : hard > 0.25 ? 1 : 0));
-  const gap = WALK_HOP_GAP + hard * 0.24;
+  const gap = obstacleGap(rise, PAD * PATH_LEN, y);
   const padAcross = PAD - hard * 0.7;
   const padAlong = padAcross * PATH_LEN;
   const hopSpan = padAlong + gap;
@@ -520,7 +524,7 @@ function rotorYard(
   if (hard > 0.5) api.addRotor(0, y + 1.35, arenaZ, 3.4, -(1.2 + hard * 0.7), 0xf39c12);
   const landAcross = PAD + 1 - hard * 0.4;
   const landAlong = landAcross * PATH_LEN;
-  const landZ = arenaZ + arenaAlong / 2 + WALK_HOP_GAP + landAlong / 2;
+  const landZ = arenaZ + arenaAlong / 2 + obstacleGap(0, landAlong, y) + landAlong / 2;
   api.addBox(landAcross, 1, landAlong, 0, y, landZ, color, { name: label });
   flagAt(api, 0, y + 0.5, landZ, label, flag);
   return { y, z: landZ + landAlong / 2 + 8 * COURSE_RUN };
@@ -533,13 +537,13 @@ function beams(
   const w = 1.15 - hard * 0.32;
   const beamLen = 9 * PATH_LEN;
   const beamAZ = z + beamLen / 2;
-  const beamBZ = beamAZ + beamLen / 2 + WALK_HOP_GAP + beamLen / 2;
+  const beamBZ = beamAZ + beamLen / 2 + obstacleGap(rise, beamLen, y) + beamLen / 2;
   api.addBox(w, 0.45, beamLen, -1.2 - hard * 0.4, y + 0.2, beamAZ, 0x90a4ae, { name: `${label} Beam A` });
   api.addBox(w, 0.45, beamLen, 1.2 + hard * 0.4, y + 0.2 + rise, beamBZ, 0x90a4ae, { name: `${label} Beam B` });
   const endY = y + rise;
   const landAcross = PAD + 1 - hard * 0.5;
   const landAlong = landAcross * PATH_LEN;
-  const landZ = beamBZ + beamLen / 2 + WALK_HOP_GAP + landAlong / 2;
+  const landZ = beamBZ + beamLen / 2 + obstacleGap(0, landAlong, endY) + landAlong / 2;
   api.addBox(landAcross, 1, landAlong, 0, endY, landZ, color, { name: label });
   flagAt(api, 0, endY + 0.5, landZ, label, flag);
   return { y: endY, z: landZ + landAlong / 2 + 8 * COURSE_RUN };
@@ -557,7 +561,8 @@ function trampHop(
   const landY = y + Math.min(rise + 1.2 + hard * 0.8, 5.8);
   const landAcross = PAD + 0.4 - hard * 0.5;
   const landAlong = landAcross * PATH_LEN;
-  const landZ = trampZ + 6 + hard * 2.2 + landAlong / 2;
+  const bounce = bounceStep(y, landY - y);
+  const landZ = trampZ + Math.max(4.5, bounce * 0.58) + landAlong / 2;
   api.addBox(landAcross, 1, landAlong, 0, landY, landZ, color, { name: label });
   flagAt(api, 0, landY + 0.5, landZ, label, flag);
   return { y: landY, z: landZ + 8 * COURSE_RUN };
@@ -570,7 +575,7 @@ function zigzag(
   const xs = [-2.4 - hard, 2.4 + hard, -2.2 - hard * 0.6, 0];
   const padAcross = PAD - 0.4 - hard * 0.45;
   const padAlong = padAcross * PATH_LEN;
-  const step = padAlong + WALK_HOP_GAP + hard * 0.15;
+  const step = padAlong + obstacleGap(rise * 0.45, padAlong, y);
   const pillars = runCount(4);
   for (let i = 0; i < pillars; i++) {
     api.addBox(padAcross, 0.7, padAlong, xs[i % xs.length], y + i * (rise * 0.45), z + i * step, color, {
@@ -603,7 +608,7 @@ function moverLift(
   );
   const landAcross = PAD + 1 - hard * 0.4;
   const landAlong = landAcross * PATH_LEN;
-  const landZ = liftZ + 6 + landAlong / 2;
+  const landZ = liftZ + obstacleGap(0, landAlong, top) + landAlong / 2;
   api.addBox(landAcross, 1, landAlong, 0, top, landZ, color, { name: label });
   flagAt(api, 0, top + 0.5, landZ, label, flag);
   return { y: top, z: landZ + landAlong / 2 + 8 * COURSE_RUN };
@@ -617,7 +622,7 @@ function puffs(
   const d = w * PATH_LEN;
   api.addCloud(0, y, z, w, d, undefined, `${label} Cloud A`);
   const bx = 2.4 + hard * 1.2;
-  const bz = z + d / 2 + WALK_HOP_GAP + d / 2;
+  const bz = z + d / 2 + obstacleGap(rise, d, y) + d / 2;
   api.addCloud(bx, y + rise, bz, w, d, undefined, `${label} Cloud B`);
   flagAt(api, bx, y + rise + 0.58, bz, label, flag);
   return { y: y + rise, z: bz + d / 2 + 8 * COURSE_RUN };
@@ -631,7 +636,7 @@ function rocks(
   const rB = 2.8 - hard * 0.3;
   api.addAsteroid(-2 - hard, y, z, rA, `${label} Rock A`);
   const rx = 2.4 + hard;
-  const rz = z + rA + WALK_HOP_GAP + rB;
+  const rz = z + rA + obstacleGap(rise, rB * 2, y) + rB;
   api.addAsteroid(rx, y + rise, rz, rB, `${label} Rock B`);
   flagAt(api, rx, y + rise + 0.1, rz, label, flag);
   return { y: y + rise, z: rz + rB + 8 * COURSE_RUN };
